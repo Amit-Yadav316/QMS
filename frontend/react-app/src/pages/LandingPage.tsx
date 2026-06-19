@@ -15,6 +15,8 @@ import gammonLogo from '../assets/logos/gammon.svg';
 import godrejLogo from '../assets/logos/godrej.svg';
 import tataLogo from '../assets/logos/tata.svg';
 
+import { AnimatedHeroVisual } from '../components/AnimatedHeroVisual';
+
 const CLIENTS = [
   { name: 'Larsen & Toubro', img: ltLogo },
   { name: 'Shapoorji Pallonji', img: shapoorjiLogo },
@@ -282,26 +284,8 @@ export const LandingPage: React.FC = () => {
             </div>
           </div>
 
-          <div className="lp-hero-visual lp-hero-pipeline">
-            <h3 className="lp-pipeline-title">Process Pipeline</h3>
-            <div className="lp-pipeline-container">
-              {WORKFLOW.map((step, index) => (
-                <div key={step.step} className="lp-pipe-node">
-                  <div className="lp-pipe-icon-col">
-                    <div className="lp-pipe-circle">
-                      {step.icon}
-                    </div>
-                    {index < WORKFLOW.length - 1 && <div className="lp-pipe-line" />}
-                  </div>
-                  <div className="lp-pipe-content">
-                    <div className="lp-pipe-label">
-                      <span className="lp-pipe-num">{index + 1}.</span> {step.title}
-                    </div>
-                    <div className="lp-pipe-desc">{step.desc}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
+          <div className="lp-hero-visual">
+            <AnimatedHeroVisual />
           </div>
         </div>
       </section>
