@@ -16,6 +16,8 @@ import godrejLogo from '../assets/logos/godrej.svg';
 import tataLogo from '../assets/logos/tata.svg';
 
 import { AnimatedHeroVisual } from '../components/AnimatedHeroVisual';
+import { useAuth } from '../hooks/useAuth';
+import { getApiErrorMessage } from '../api/client';
 
 const CLIENTS = [
   { name: 'Larsen & Toubro', img: ltLogo },
@@ -198,11 +200,32 @@ const COMPARISON_ROWS = [
 
 export const LandingPage: React.FC = () => {
   const navigate = useNavigate();
+  const { login } = useAuth();
   const [scrolled, setScrolled] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [openFaq, setOpenFaq] = useState<number | null>(null);
   const [activeRole, setActiveRole] = useState(0);
+
+  // Login modal state
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [loginError, setLoginError] = useState<string | null>(null);
+  const [loginSubmitting, setLoginSubmitting] = useState(false);
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginError(null);
+    setLoginSubmitting(true);
+    try {
+      await login(loginEmail, loginPassword);
+      navigate('/app');
+    } catch (err) {
+      setLoginError(getApiErrorMessage(err, 'Incorrect email or password'));
+    } finally {
+      setLoginSubmitting(false);
+    }
+  };
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20);
@@ -582,22 +605,46 @@ export const LandingPage: React.FC = () => {
               <p className="lp-modal-sub">Log in to your QMS account</p>
             </div>
 
-            <form className="lp-modal-form" onSubmit={(e) => {
-              e.preventDefault();
-              navigate('/app');
-            }}>
+            <form className="lp-modal-form" onSubmit={handleLogin}>
+              {loginError && (
+                <div className="lp-form-group" style={{ color: '#b91c1c', fontSize: 13 }} role="alert">
+                  {loginError}
+                </div>
+              )}
               <div className="lp-form-group">
                 <label className="lp-form-label">Email address</label>
-                <input type="email" className="lp-form-input" placeholder="admin@construction.com" required aria-label="Email address" />
+                <input
+                  type="email"
+                  className="lp-form-input"
+                  placeholder="admin@construction.com"
+                  required
+                  aria-label="Email address"
+                  value={loginEmail}
+                  onChange={(e) => setLoginEmail(e.target.value)}
+                />
               </div>
 
               <div className="lp-form-group">
                 <label className="lp-form-label">Password</label>
-                <input type="password" className="lp-form-input" placeholder="••••••••" required aria-label="Password" />
+                <input
+                  type="password"
+                  className="lp-form-input"
+                  placeholder="••••••••"
+                  required
+                  aria-label="Password"
+                  value={loginPassword}
+                  onChange={(e) => setLoginPassword(e.target.value)}
+                />
               </div>
 
-              <button type="submit" className="lp-btn lp-btn--hero" style={{ width: '100%' }} aria-label="Sign in to QMS">
-                Sign In to QMS
+              <button
+                type="submit"
+                className="lp-btn lp-btn--hero"
+                style={{ width: '100%' }}
+                aria-label="Sign in to QMS"
+                disabled={loginSubmitting}
+              >
+                {loginSubmitting ? 'Signing in…' : 'Sign In to QMS'}
               </button>
             </form>
           </div>

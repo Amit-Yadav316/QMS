@@ -13,10 +13,15 @@ def create_app() -> FastAPI:
         openapi_url="/openapi.json" if not settings.is_production else None,
     )
 
-    # CORS — allow frontend dev server
+    # CORS — allow frontend dev server.
+    # 3000 is the configured Vite port; 5173 is Vite's default fallback.
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[settings.FRONTEND_URL, "http://localhost:3000"],
+        allow_origins=[
+            settings.FRONTEND_URL,
+            "http://localhost:3000",
+            "http://localhost:5173",
+        ],
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

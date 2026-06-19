@@ -1,7 +1,9 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Download, Plus, Bell, FolderPlus } from 'lucide-react';
+import { Download, Plus, Bell, FolderPlus, LogOut } from 'lucide-react';
 import { Button } from '../ui/Button';
+import { useAuth } from '../../hooks/useAuth';
+import { initials } from '../../lib/initials';
 import './Topbar.css';
 
 interface TopbarProps {
@@ -10,6 +12,12 @@ interface TopbarProps {
 
 export const Topbar: React.FC<TopbarProps> = ({ title }) => {
   const navigate = useNavigate();
+  const { user, logout } = useAuth();
+
+  const handleLogout = async () => {
+    await logout();
+    navigate('/');
+  };
 
   return (
     <header className="qms-topbar">
@@ -29,8 +37,13 @@ export const Topbar: React.FC<TopbarProps> = ({ title }) => {
           <Bell size={18} color="var(--gray-500)" />
           <div className="qms-notif-dot"></div>
         </div>
-        
-        <div className="qms-avatar qms-avatar--clickable">RS</div>
+
+        <div className="qms-avatar qms-avatar--clickable" title={user?.full_name ?? ''}>
+          {initials(user?.full_name)}
+        </div>
+        <Button variant="ghost" size="sm" icon={<LogOut size={14} />} onClick={handleLogout}>
+          Log out
+        </Button>
       </div>
     </header>
   );

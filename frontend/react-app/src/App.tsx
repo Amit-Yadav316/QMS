@@ -1,5 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AppLayout } from './components/layout/AppLayout';
+import { ProtectedRoute } from './components/ProtectedRoute';
+import { LoginPage } from './pages/LoginPage';
 import { Dashboard } from './pages/Dashboard';
 import { Analytics } from './pages/Analytics';
 import { Traceability } from './pages/Traceability';
@@ -29,8 +31,10 @@ function App() {
         <Route path="/external/lab-registration" element={<LabRegistrationForm />} />
         
         <Route path="/" element={<LandingPage />} />
-        
-        {/* Internal Authenticated Routes */}
+        <Route path="/login" element={<LoginPage />} />
+
+        {/* Internal Authenticated Routes — guarded by ProtectedRoute */}
+        <Route element={<ProtectedRoute />}>
         <Route path="/app" element={<AppLayout />}>
           <Route index element={<Dashboard />} />
           <Route path="analytics" element={<Analytics />} />
@@ -55,6 +59,7 @@ function App() {
           
           {/* Fallback routes for demo purposes */}
           <Route path="*" element={<Navigate to="/app" replace />} />
+        </Route>
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

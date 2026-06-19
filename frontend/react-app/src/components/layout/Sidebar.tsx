@@ -1,24 +1,34 @@
 import React from 'react';
-import { NavLink } from 'react-router-dom';
-import { 
-  Home, 
-  BarChart2, 
-  FileText, 
-  TestTube, 
-  Link as LinkIcon, 
-  Scan, 
-  AlertTriangle, 
+import { NavLink, useNavigate } from 'react-router-dom';
+import {
+  Home,
+  BarChart2,
+  FileText,
+  TestTube,
+  Link as LinkIcon,
+  Scan,
+  AlertTriangle,
   FileBarChart,
   Truck,
   Building,
   Users,
   MessageCircle,
-  Settings,
+  LogOut,
   CheckSquare
 } from 'lucide-react';
+import { useAuth } from '../../hooks/useAuth';
+import { initials, roleLabel } from '../../lib/initials';
 import './Sidebar.css';
 
 export const Sidebar: React.FC = () => {
+  const navigate = useNavigate();
+  const { user, organisation, logout } = useAuth();
+
+  const handleLogout = async () => {
+    await logout();
+    navigate('/');
+  };
+
   return (
     <aside className="qms-sidebar">
       <div className="qms-sidebar-top">
@@ -30,8 +40,8 @@ export const Sidebar: React.FC = () => {
           </div>
         </div>
         <div className="qms-project-badge">
-          Godrej Splendour Phase 2
-          <span>PRJ-2024-001 · Active</span>
+          {organisation?.org_name ?? 'Your organisation'}
+          <span>{roleLabel(organisation?.org_type) || '—'} · {organisation?.status ?? ''}</span>
         </div>
       </div>
 
@@ -91,12 +101,19 @@ export const Sidebar: React.FC = () => {
 
       <div className="qms-sidebar-bottom">
         <div className="qms-user-row">
-          <div className="qms-avatar">RS</div>
+          <div className="qms-avatar">{initials(user?.full_name)}</div>
           <div>
-            <div className="qms-user-name">Rajesh Sharma</div>
-            <div className="qms-user-role">Super Admin</div>
+            <div className="qms-user-name">{user?.full_name ?? 'Not signed in'}</div>
+            <div className="qms-user-role">{roleLabel(user?.role)}</div>
           </div>
-          <Settings size={16} className="qms-settings-icon" />
+          <LogOut
+            size={16}
+            className="qms-settings-icon"
+            role="button"
+            aria-label="Log out"
+            onClick={handleLogout}
+            style={{ cursor: 'pointer' }}
+          />
         </div>
       </div>
     </aside>
