@@ -1282,6 +1282,184 @@
   text-decoration: underline;
 }
 
+/* ─── ROLE TABS ─── */
+.lp-role-tabs {
+  margin-top: 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+.lp-role-tab-list {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.lp-role-tab-btn {
+  background: var(--lp-bg);
+  border: 1px solid var(--lp-border);
+  border-radius: 32px;
+  padding: 12px 24px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--lp-slate);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+}
+
+.lp-role-tab-btn:hover {
+  background: var(--lp-surface);
+  border-color: #CBD5E1;
+}
+
+.lp-role-tab-btn--active {
+  background: var(--lp-navy);
+  color: #fff;
+  border-color: var(--lp-navy);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.2);
+}
+
+.lp-role-panel {
+  background: var(--lp-bg);
+  border: 1px solid var(--lp-border);
+  border-radius: 20px;
+  padding: 48px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.04);
+  max-width: 800px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.lp-role-headline {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--lp-navy);
+  margin-bottom: 24px;
+  letter-spacing: -0.5px;
+}
+
+.lp-role-points {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.lp-role-points li {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  font-size: 16px;
+  color: var(--lp-slate);
+  line-height: 1.5;
+}
+
+.lp-role-check {
+  color: var(--lp-blue);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+/* ─── AI CHATBOT DEMO ─── */
+.lp-chatbot-inner {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 64px;
+  align-items: center;
+}
+
+.lp-chat-box {
+  background: var(--lp-bg);
+  border: 1px solid var(--lp-border);
+  border-radius: 24px;
+  padding: 24px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.lp-chat-msg {
+  display: flex;
+}
+
+.lp-chat-msg--user {
+  justify-content: flex-end;
+}
+
+.lp-chat-msg--bot {
+  justify-content: flex-start;
+}
+
+.lp-chat-bubble {
+  max-width: 80%;
+  padding: 14px 18px;
+  border-radius: 20px;
+  font-size: 15px;
+  line-height: 1.5;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+}
+
+.lp-chat-bubble--user {
+  background: var(--lp-blue);
+  color: #fff;
+  border-bottom-right-radius: 4px;
+}
+
+.lp-chat-bubble--bot {
+  background: var(--lp-surface);
+  border: 1px solid var(--lp-border);
+  color: var(--lp-slate);
+  border-bottom-left-radius: 4px;
+}
+
+.lp-chat-input-row {
+  display: flex;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.lp-chat-input {
+  flex: 1;
+  background: var(--lp-surface);
+  border: 1px solid var(--lp-border);
+  border-radius: 32px;
+  padding: 14px 20px;
+  font-size: 15px;
+  color: var(--lp-slate);
+  outline: none;
+}
+
+.lp-chat-input:focus {
+  border-color: var(--lp-blue);
+  box-shadow: 0 0 0 3px rgba(26, 86, 219, 0.1);
+}
+
+.lp-chat-send {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--lp-navy);
+  color: #fff;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.lp-chat-send:hover {
+  background: var(--lp-blue);
+  transform: translateY(-2px);
+}
+
 /* ─── MOBILE RESPONSIVE ─── */
 @media (max-width: 768px) {
 
