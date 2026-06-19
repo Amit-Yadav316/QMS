@@ -287,13 +287,18 @@ export const LandingPage: React.FC = () => {
             <div className="lp-pipeline-container">
               {WORKFLOW.map((step, index) => (
                 <div key={step.step} className="lp-pipe-node">
-                  <div className="lp-pipe-circle">
-                    {step.icon}
+                  <div className="lp-pipe-icon-col">
+                    <div className="lp-pipe-circle">
+                      {step.icon}
+                    </div>
+                    {index < WORKFLOW.length - 1 && <div className="lp-pipe-line" />}
                   </div>
-                  <div className="lp-pipe-label">
-                    <span className="lp-pipe-num">{index + 1}.</span> {step.title}
+                  <div className="lp-pipe-content">
+                    <div className="lp-pipe-label">
+                      <span className="lp-pipe-num">{index + 1}.</span> {step.title}
+                    </div>
+                    <div className="lp-pipe-desc">{step.desc}</div>
                   </div>
-                  {index < WORKFLOW.length - 1 && <div className="lp-pipe-line" />}
                 </div>
               ))}
             </div>
