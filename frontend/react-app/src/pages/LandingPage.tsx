@@ -8,12 +8,12 @@ import {
 } from 'lucide-react';
 import './LandingPage.css';
 
-import ltLogo from '../assets/logos/lt.png';
-import shapoorjiLogo from '../assets/logos/shapoorji.png';
-import dlfLogo from '../assets/logos/dlf.png';
-import gammonLogo from '../assets/logos/gammon.png';
-import godrejLogo from '../assets/logos/godrej.png';
-import tataLogo from '../assets/logos/tata.png';
+import ltLogo from '../assets/logos/larsentoubro.svg';
+import shapoorjiLogo from '../assets/logos/shapoorji.svg';
+import dlfLogo from '../assets/logos/dlf.svg';
+import gammonLogo from '../assets/logos/gammon.svg';
+import godrejLogo from '../assets/logos/godrej.svg';
+import tataLogo from '../assets/logos/tata.svg';
 
 const CLIENTS = [
   { name: 'Larsen & Toubro', img: ltLogo },
