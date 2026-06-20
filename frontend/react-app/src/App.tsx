@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AppLayout } from './components/layout/AppLayout';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { LoginPage } from './pages/LoginPage';
+import { AcceptInvitationPage } from './pages/AcceptInvitationPage';
 import { Dashboard } from './pages/Dashboard';
 import { Analytics } from './pages/Analytics';
 import { Traceability } from './pages/Traceability';
@@ -32,6 +33,7 @@ function App() {
         
         <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/auth/accept-invitation" element={<AcceptInvitationPage />} />
 
         {/* Internal Authenticated Routes — guarded by ProtectedRoute */}
         <Route element={<ProtectedRoute />}>

@@ -6,7 +6,12 @@ import type { ReactNode } from 'react';
 import { authApi } from '../api/auth';
 import { tokenStorage } from '../api/tokenStorage';
 import { AUTH_LOGOUT_EVENT } from '../api/client';
-import type { UserResponse, OrgResponse, OrgRegisterRequest } from '../types/auth';
+import type {
+  UserResponse,
+  OrgResponse,
+  OrgRegisterRequest,
+  AcceptInvitationRequest,
+} from '../types/auth';
 import { AuthContext } from './authContext';
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -43,6 +48,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await refreshMe();
   }, [refreshMe]);
 
+  const acceptInvitation = useCallback(async (data: AcceptInvitationRequest) => {
+    const res = await authApi.acceptInvitation(data);
+    tokenStorage.setSession(res.access_token, res.refresh_token, res.user);
+    setUser(res.user);
+    await refreshMe();
+  }, [refreshMe]);
+
   const logout = useCallback(async () => {
     try {
       await authApi.logout();
@@ -52,20 +64,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     clearSession();
   }, [clearSession]);
 
-  // Bootstrap: validate any stored token on first load.
+  // Bootstrap: validate any stored token on first load. isLoading already
+  // initialises to false when there's no stored token, so we only need to do
+  // work (and flip loading off) when a token is present.
   useEffect(() => {
     if (!tokenStorage.getAccess()) {
-      setIsLoading(false);
       return;
     }
     let cancelled = false;
-    refreshMe()
-      .catch(() => {
+    const bootstrap = async () => {
+      try {
+        await refreshMe();
+      } catch {
         if (!cancelled) clearSession();
-      })
-      .finally(() => {
+      } finally {
         if (!cancelled) setIsLoading(false);
-      });
+      }
+    };
+    void bootstrap();
     return () => {
       cancelled = true;
     };
@@ -87,6 +103,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isLoading,
         login,
         register,
+        acceptInvitation,
         logout,
         refreshMe,
       }}

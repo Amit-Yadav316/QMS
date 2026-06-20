@@ -3,7 +3,12 @@
 // consumer hook is in hooks/useAuth.ts.
 
 import { createContext } from 'react';
-import type { UserResponse, OrgResponse, OrgRegisterRequest } from '../types/auth';
+import type {
+  UserResponse,
+  OrgResponse,
+  OrgRegisterRequest,
+  AcceptInvitationRequest,
+} from '../types/auth';
 
 export interface AuthContextValue {
   user: UserResponse | null;
@@ -13,6 +18,7 @@ export interface AuthContextValue {
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (data: OrgRegisterRequest) => Promise<void>;
+  acceptInvitation: (data: AcceptInvitationRequest) => Promise<void>;
   logout: () => Promise<void>;
   refreshMe: () => Promise<void>;
 }
