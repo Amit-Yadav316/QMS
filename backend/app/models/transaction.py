@@ -4,13 +4,25 @@ Schema: transaction
 """
 
 import enum
-from datetime import datetime, date
+from datetime import date, datetime
+
 from sqlalchemy import (
-    BigInteger, Boolean, String, DateTime, Date, Text,
-    Numeric, Integer, ForeignKey, Enum as SAEnum,
-    Index, UniqueConstraint, func
+    BigInteger,
+    Boolean,
+    Date,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
 )
+from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from app.database.base import Base
 
 

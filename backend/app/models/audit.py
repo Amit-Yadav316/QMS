@@ -7,12 +7,12 @@ Nothing in this schema is ever updated or deleted.
 
 import enum
 from datetime import datetime
-from sqlalchemy import (
-    BigInteger, String, DateTime, Text,
-    Integer, ForeignKey, Enum as SAEnum, func
-)
+
+from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
+
 from app.database.base import Base
 
 

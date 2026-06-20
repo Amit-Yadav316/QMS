@@ -8,9 +8,10 @@ Request schemas validate input. Response schemas control output.
 """
 
 from datetime import datetime
-from pydantic import BaseModel, EmailStr, field_validator, model_validator
-from app.models.auth import OrgType, UserRole, OrgStatus, InvitationStatus
 
+from pydantic import BaseModel, EmailStr, field_validator, model_validator
+
+from app.models.auth import InvitationStatus, OrgStatus, OrgType, UserRole
 
 # ---------------------------------------------------------------------------
 # Organisation schemas

@@ -1,7 +1,8 @@
-from typing import AsyncGenerator
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-from app.database.engine import engine
+from collections.abc import AsyncGenerator
 
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+from app.database.engine import engine
 
 # async_sessionmaker is the async equivalent of sessionmaker.
 # expire_on_commit=False is CRITICAL for async SQLAlchemy:

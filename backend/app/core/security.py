@@ -18,8 +18,7 @@ JWT payload structure:
 """
 
 import uuid
-from datetime import datetime, timedelta, timezone
-from typing import Optional
+from datetime import UTC, datetime, timedelta
 
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -74,7 +73,7 @@ def _create_token(
     used to blacklist the token on logout.
     """
     jti = str(uuid.uuid4())
-    expire = datetime.now(timezone.utc) + expire_delta
+    expire = datetime.now(UTC) + expire_delta
 
     payload = {
         "sub": str(user_id),
@@ -135,7 +134,7 @@ class TokenData:
         self.token_type = token_type
 
 
-def decode_token(token: str) -> Optional[TokenData]:
+def decode_token(token: str) -> TokenData | None:
     """
     Decodes and validates a JWT.
     Returns TokenData if valid, None if expired or invalid.

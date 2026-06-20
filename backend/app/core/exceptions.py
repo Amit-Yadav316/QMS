@@ -7,7 +7,6 @@ Centralised here so routers never import from fastapi directly for errors.
 
 from fastapi import HTTPException, status
 
-
 # ---------------------------------------------------------------------------
 # Auth exceptions
 # ---------------------------------------------------------------------------

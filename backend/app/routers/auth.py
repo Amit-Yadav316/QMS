@@ -3,20 +3,26 @@ auth.py router — all /auth/* endpoints
 """
 
 from fastapi import APIRouter, Depends
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
-from app.database.session import get_db
 from app.core.dependencies import get_current_user, require_role
-from app.core.security import decode_token
 from app.core.exceptions import InvalidTokenError, PermissionDeniedError
+from app.core.security import decode_token
+from app.database.session import get_db
 from app.models.auth import User, UserRole
 from app.schemas.auth import (
-    OrgRegisterRequest, ContractorRegisterRequest,
-    LoginRequest, RefreshRequest, InviteRequest,
-    AcceptInvitationRequest, TokenResponse,
-    AccessTokenResponse, OrgResponse,
-    InvitationResponse, MeResponse,
+    AcceptInvitationRequest,
+    AccessTokenResponse,
+    ContractorRegisterRequest,
+    InvitationResponse,
+    InviteRequest,
+    LoginRequest,
+    MeResponse,
+    OrgRegisterRequest,
+    OrgResponse,
+    RefreshRequest,
+    TokenResponse,
 )
 from app.services.auth_service import AuthService
 

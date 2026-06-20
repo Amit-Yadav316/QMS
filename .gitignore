@@ -17,6 +17,13 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+# Python / uv (defense-in-depth; see backend/.gitignore for the full set)
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.log
+
 # Environment Variables
 .env
 .env.local

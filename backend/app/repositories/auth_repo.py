@@ -5,13 +5,19 @@ Database queries for auth — users, organisations, invitations, blacklist.
 No business logic here. Only SQLAlchemy queries.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.auth import (
-    Organisation, User, OrgInvitation,
-    TokenBlacklist, InvitationStatus, OrgType, OrgStatus
+    InvitationStatus,
+    Organisation,
+    OrgInvitation,
+    OrgStatus,
+    OrgType,
+    TokenBlacklist,
+    User,
 )
 
 
@@ -167,7 +173,7 @@ class AuthRepository:
         from sqlalchemy import delete
         result = await self.session.execute(
             delete(TokenBlacklist).where(
-                TokenBlacklist.expires_at < datetime.now(timezone.utc)
+                TokenBlacklist.expires_at < datetime.now(UTC)
             )
         )
         return result.rowcount

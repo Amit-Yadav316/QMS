@@ -9,13 +9,25 @@ Handles both cases:
 """
 
 import enum
-from datetime import datetime, date
+from datetime import date, datetime
+
 from sqlalchemy import (
-    BigInteger, String, Boolean, DateTime, Date, Text,
-    Numeric, Integer, ForeignKey, Enum as SAEnum,
-    UniqueConstraint, Index, func
+    BigInteger,
+    Boolean,
+    Date,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
 )
+from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from app.database.base import Base
 
 
@@ -23,6 +35,13 @@ class ProjectStatus(str, enum.Enum):
     ACTIVE = "ACTIVE"
     COMPLETED = "COMPLETED"
     ON_HOLD = "ON_HOLD"
+
+
+class ProjectType(str, enum.Enum):
+    RESIDENTIAL = "RESIDENTIAL"
+    COMMERCIAL = "COMMERCIAL"
+    MIXED_USE = "MIXED_USE"
+    INFRASTRUCTURE = "INFRASTRUCTURE"
 
 
 class ComponentType(str, enum.Enum):
@@ -91,6 +110,30 @@ class Project(Base):
     saleable_area_sqft: Mapped[float | None] = mapped_column(Numeric(14, 2), nullable=True)
     no_of_towers: Mapped[int | None] = mapped_column(Integer, nullable=True)
     no_of_flats: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # ── Phase 1 extension: richer fields captured by the Project Master form ──
+    project_type: Mapped[ProjectType | None] = mapped_column(
+        SAEnum(ProjectType, schema="master"), nullable=True
+    )
+    gst_number: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    address_line1: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    address_line2: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    city: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    state: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    pin_code: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    geo_coordinates: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    site_area_sqm: Mapped[float | None] = mapped_column(Numeric(14, 2), nullable=True)
+    end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    no_of_basements: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    max_floors: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    acceptance_criteria: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    min_cube_samples: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    early_test_age_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    mid_test_age_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    final_test_age_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    characteristic_strength_pct: Mapped[float | None] = mapped_column(
+        Numeric(5, 2), nullable=True
+    )
+    ncr_trigger: Mapped[str | None] = mapped_column(String(300), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -171,6 +214,12 @@ class Tower(Base):
     floors_total: Mapped[int | None] = mapped_column(Integer, nullable=True)
     no_of_flats: Mapped[int | None] = mapped_column(Integer, nullable=True)
     flats_per_floor: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # ── Phase 1 extension: per-tower fields from the Project Master form ──
+    tower_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    no_of_basements: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    floor_height_m: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)
+    start_label: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    construction_start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
 
     project: Mapped["Project"] = relationship("Project", back_populates="towers")
     floors: Mapped[list["Floor"]] = relationship("Floor", back_populates="tower")
@@ -273,6 +322,19 @@ class Supplier(Base):
     contact_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     contact_phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # ── Phase 1 extension: fields from the RMC Supplier Registration form ──
+    plant_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    gst_number: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    pan_number: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    transit_time_mins: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    primary_contact_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    primary_contact_designation: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    dispatch_manager_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    dispatch_mobile: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    plant_capacity_cum_hr: Mapped[float | None] = mapped_column(Numeric(8, 2), nullable=True)
+    no_transit_mixers: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    no_concrete_pumps: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    qms_certification: Mapped[str | None] = mapped_column(String(50), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -360,6 +422,20 @@ class TestingLab(Base):
     contact_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     contact_phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # ── Phase 1 extension: fields from the External Lab Registration form ──
+    registration_number: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    gst_number: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    address_line1: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    city: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    state: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    lab_manager_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    alternate_phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    nabl_accredited: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    nabl_certificate_no: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    nabl_expiry_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    ctm_calibration_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    ctm_calibration_expiry: Mapped[date | None] = mapped_column(Date, nullable=True)
+    ctm_capacity_kn: Mapped[float | None] = mapped_column(Numeric(8, 2), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

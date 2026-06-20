@@ -5,11 +5,11 @@ Schema: auth
 
 import enum
 from datetime import datetime
-from sqlalchemy import (
-    BigInteger, String, Boolean, DateTime,
-    ForeignKey, Enum as SAEnum, func
-)
+
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, String, func
+from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from app.database.base import Base
 
 

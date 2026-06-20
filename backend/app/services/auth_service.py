@@ -2,33 +2,47 @@
 auth_service.py — all auth business logic
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.repositories.auth_repo import AuthRepository
-from app.core.security import (
-    hash_password, verify_password,
-    create_access_token, create_refresh_token,
-    decode_token, create_invitation_token,
-)
-from app.core.exceptions import (
-    InvalidCredentialsError, InvalidTokenError,
-    InvalidInvitationError, InvitationAlreadyUsedError,
-    AlreadyExistsError,
-)
-from app.core.email import send_invitation_email
-from app.models.auth import (
-    User, OrgInvitation,
-    OrgType, UserRole, InvitationStatus,
-)
-from app.schemas.auth import (
-    OrgRegisterRequest, ContractorRegisterRequest,
-    LoginRequest, InviteRequest, AcceptInvitationRequest,
-    TokenResponse, UserResponse, OrgResponse, MeResponse,
-    AccessTokenResponse,
-)
 from app.config import settings
+from app.core.email import send_invitation_email
+from app.core.exceptions import (
+    AlreadyExistsError,
+    InvalidCredentialsError,
+    InvalidInvitationError,
+    InvalidTokenError,
+    InvitationAlreadyUsedError,
+)
+from app.core.security import (
+    create_access_token,
+    create_invitation_token,
+    create_refresh_token,
+    decode_token,
+    hash_password,
+    verify_password,
+)
+from app.models.auth import (
+    InvitationStatus,
+    OrgInvitation,
+    OrgType,
+    User,
+    UserRole,
+)
+from app.repositories.auth_repo import AuthRepository
+from app.schemas.auth import (
+    AcceptInvitationRequest,
+    AccessTokenResponse,
+    ContractorRegisterRequest,
+    InviteRequest,
+    LoginRequest,
+    MeResponse,
+    OrgRegisterRequest,
+    OrgResponse,
+    TokenResponse,
+    UserResponse,
+)
 
 
 class AuthService:
@@ -103,7 +117,7 @@ class AuthService:
 
     async def logout(self, access_jti: str, user_id: int) -> None:
         """Blacklists the access token JTI."""
-        expires_at = datetime.now(timezone.utc) + timedelta(
+        expires_at = datetime.now(UTC) + timedelta(
             minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
         )
         await self.repo.blacklist_token(
@@ -137,7 +151,7 @@ class AuthService:
 
         # Auto-create invitation for contractor admin
         token = create_invitation_token()
-        expires_at = datetime.now(timezone.utc) + timedelta(hours=72)
+        expires_at = datetime.now(UTC) + timedelta(hours=72)
 
         await self.repo.create_invitation(
             org_id=org.org_id,
@@ -177,7 +191,7 @@ class AuthService:
         PROJECT_MANAGER  → invites QUALITY_ENGINEER / SUPERVISOR
         """
         token = create_invitation_token()
-        expires_at = datetime.now(timezone.utc) + timedelta(hours=48)
+        expires_at = datetime.now(UTC) + timedelta(hours=48)
 
         invitation = await self.repo.create_invitation(
             org_id=inviting_user.org_id,
@@ -212,7 +226,7 @@ class AuthService:
         if invitation.status == InvitationStatus.ACCEPTED:
             raise InvitationAlreadyUsedError()
 
-        if invitation.expires_at < datetime.now(timezone.utc):
+        if invitation.expires_at < datetime.now(UTC):
             raise InvalidInvitationError()
 
         if await self.repo.email_exists(invitation.invited_email):

@@ -11,7 +11,8 @@ Every email in the system goes through one of these functions:
 """
 
 from pathlib import Path
-from fastapi_mail import FastMail, MessageSchema, MessageType, ConnectionConfig
+
+from fastapi_mail import ConnectionConfig, FastMail, MessageSchema, MessageType
 from jinja2 import Environment, FileSystemLoader
 
 from app.config import settings

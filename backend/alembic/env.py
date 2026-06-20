@@ -4,18 +4,17 @@ from logging.config import fileConfig
 from sqlalchemy import pool, text
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from alembic import context
-
-from app.database.base import Base
-from app.config import settings
+import app.models.audit  # noqa: F401
 
 # Import ALL model files — Alembic autogenerate only sees tables
 # whose models have been imported. Never skip any of these.
-import app.models.auth        # noqa: F401
-import app.models.master      # noqa: F401
-import app.models.transaction # noqa: F401
-import app.models.quality     # noqa: F401
-import app.models.audit       # noqa: F401
+import app.models.auth  # noqa: F401
+import app.models.master  # noqa: F401
+import app.models.quality  # noqa: F401
+import app.models.transaction  # noqa: F401
+from alembic import context
+from app.config import settings
+from app.database.base import Base
 
 config = context.config
 
