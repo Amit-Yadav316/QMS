@@ -16,19 +16,32 @@ def _user(role: UserRole) -> SimpleNamespace:
 
 # (inviter, target) pairs that should be allowed.
 ALLOWED = [
-    (UserRole.CLIENT_ADMIN, UserRole.CONTRACTOR_ADMIN),
+    (UserRole.CLIENT_ADMIN, UserRole.CLIENT_USER),
+    (UserRole.CONTRACTOR_ADMIN, UserRole.CONTRACTOR_USER),
     (UserRole.CONTRACTOR_ADMIN, UserRole.PROJECT_MANAGER),
-    (UserRole.PROJECT_MANAGER, UserRole.QUALITY_ENGINEER),
-    (UserRole.PROJECT_MANAGER, UserRole.SUPERVISOR),
+    (UserRole.CONTRACTOR_ADMIN, UserRole.SUPERVISOR),
+    (UserRole.CONTRACTOR_ADMIN, UserRole.QUALITY_ENGINEER),
+    (UserRole.CONTRACTOR_USER, UserRole.PROJECT_MANAGER),
+    (UserRole.CONTRACTOR_USER, UserRole.SUPERVISOR),
+    (UserRole.CONTRACTOR_USER, UserRole.QUALITY_ENGINEER),
 ]
 
 # (inviter, target) pairs that must be rejected.
 FORBIDDEN = [
+    # Client admin can only invite client users (contractors come in via
+    # POST /projects/{id}/contractors, not this matrix).
+    (UserRole.CLIENT_ADMIN, UserRole.CONTRACTOR_ADMIN),
     (UserRole.CLIENT_ADMIN, UserRole.PROJECT_MANAGER),
     (UserRole.CLIENT_ADMIN, UserRole.CLIENT_ADMIN),
+    # Client users cannot invite anyone via this endpoint.
+    (UserRole.CLIENT_USER, UserRole.CLIENT_USER),
+    (UserRole.CLIENT_USER, UserRole.PROJECT_MANAGER),
+    # Contractor users cannot create more contractor users (admin-only).
+    (UserRole.CONTRACTOR_USER, UserRole.CONTRACTOR_USER),
     (UserRole.CONTRACTOR_ADMIN, UserRole.CONTRACTOR_ADMIN),
-    (UserRole.CONTRACTOR_ADMIN, UserRole.QUALITY_ENGINEER),
-    (UserRole.PROJECT_MANAGER, UserRole.CONTRACTOR_ADMIN),
+    # Leaf roles cannot invite anyone.
+    (UserRole.PROJECT_MANAGER, UserRole.QUALITY_ENGINEER),
+    (UserRole.PROJECT_MANAGER, UserRole.SUPERVISOR),
     (UserRole.QUALITY_ENGINEER, UserRole.SUPERVISOR),
     (UserRole.SUPERVISOR, UserRole.QUALITY_ENGINEER),
 ]

@@ -6,6 +6,8 @@ import type {
   LoginRequest,
   OrgRegisterRequest,
   AcceptInvitationRequest,
+  OtpChallengeResponse,
+  VerifyOtpRequest,
   TokenResponse,
   MeResponse,
 } from '../types/auth';
@@ -15,12 +17,22 @@ export const authApi = {
     return api.post<TokenResponse>('/auth/login', data).then((r) => r.data);
   },
 
-  register(data: OrgRegisterRequest): Promise<TokenResponse> {
-    return api.post<TokenResponse>('/auth/register', data).then((r) => r.data);
+  // Register + accept-invitation create an inactive account and return an OTP
+  // challenge; tokens are issued by verifyOtp once the code is confirmed.
+  register(data: OrgRegisterRequest): Promise<OtpChallengeResponse> {
+    return api.post<OtpChallengeResponse>('/auth/register', data).then((r) => r.data);
   },
 
-  acceptInvitation(data: AcceptInvitationRequest): Promise<TokenResponse> {
-    return api.post<TokenResponse>('/auth/accept-invitation', data).then((r) => r.data);
+  acceptInvitation(data: AcceptInvitationRequest): Promise<OtpChallengeResponse> {
+    return api.post<OtpChallengeResponse>('/auth/accept-invitation', data).then((r) => r.data);
+  },
+
+  verifyOtp(data: VerifyOtpRequest): Promise<TokenResponse> {
+    return api.post<TokenResponse>('/auth/verify-otp', data).then((r) => r.data);
+  },
+
+  resendOtp(email: string): Promise<OtpChallengeResponse> {
+    return api.post<OtpChallengeResponse>('/auth/resend-otp', { email }).then((r) => r.data);
   },
 
   me(): Promise<MeResponse> {

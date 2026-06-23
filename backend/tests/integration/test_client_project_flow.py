@@ -13,6 +13,7 @@ from app.models.master import Tower
 from tests.helpers import (
     API,
     DEFAULT_PASSWORD,
+    accept_and_verify,
     bearer,
     register_and_token,
     sample_project_payload,
@@ -63,10 +64,17 @@ class TestCreateProject:
 
 
 class TestRegisterContractor:
-    async def test_register_contractor_creates_org_and_invitation(self, client, db_session):
+    async def test_add_contractor_to_project_creates_link_and_invitation(
+        self, client, db_session
+    ):
         token, _ = await register_and_token(client)
+        proj = await client.post(
+            f"{API}/projects", json=sample_project_payload(), headers=bearer(token)
+        )
+        project_id = proj.json()["project_id"]
+
         resp = await client.post(
-            f"{API}/auth/register-contractor",
+            f"{API}/projects/{project_id}/contractors",
             json={
                 "org_name": "L&T Construction",
                 "contact_email": "contractor.admin@example.com",
@@ -75,9 +83,9 @@ class TestRegisterContractor:
             headers=bearer(token),
         )
         assert resp.status_code == 201, resp.text
-        org = resp.json()
-        assert org["org_type"] == "CONTRACTOR"
-        assert org["status"] == "ACTIVE"
+        pc = resp.json()
+        assert pc["contractor_org_name"] == "L&T Construction"
+        assert pc["status"] == "PENDING"
 
         # A pending CONTRACTOR_ADMIN invitation should have been created.
         inv = (
@@ -90,26 +98,36 @@ class TestRegisterContractor:
         assert inv.role == UserRole.CONTRACTOR_ADMIN
         assert inv.status == InvitationStatus.PENDING
 
-    async def test_register_contractor_requires_auth(self, client):
+    async def test_add_contractor_requires_auth(self, client):
         resp = await client.post(
-            f"{API}/auth/register-contractor",
+            f"{API}/projects/1/contractors",
             json={"org_name": "X", "contact_email": "x@example.com"},
         )
         assert resp.status_code in (401, 403)
 
 
 class TestInviteEndpoint:
-    async def test_client_can_invite_contractor_admin(self, client):
+    async def test_client_admin_can_invite_client_user(self, client):
+        token, _ = await register_and_token(client)
+        resp = await client.post(
+            f"{API}/auth/invite",
+            json={"invited_email": "clientuser@example.com", "role": "CLIENT_USER"},
+            headers=bearer(token),
+        )
+        assert resp.status_code == 201, resp.text
+        body = resp.json()
+        assert body["role"] == "CLIENT_USER"
+        assert body["status"] == "PENDING"
+
+    async def test_client_admin_cannot_invite_contractor_admin(self, client):
+        # Contractors are brought on via POST /projects/{id}/contractors, not /invite.
         token, _ = await register_and_token(client)
         resp = await client.post(
             f"{API}/auth/invite",
             json={"invited_email": "newcontractor@example.com", "role": "CONTRACTOR_ADMIN"},
             headers=bearer(token),
         )
-        assert resp.status_code == 201, resp.text
-        body = resp.json()
-        assert body["role"] == "CONTRACTOR_ADMIN"
-        assert body["status"] == "PENDING"
+        assert resp.status_code == 403
 
     async def test_client_cannot_invite_project_manager(self, client):
         token, _ = await register_and_token(client)
@@ -139,70 +157,71 @@ class TestFullClientToContractorJourney:
             f"{API}/projects", json=sample_project_payload(), headers=bearer(client_token)
         )
         assert proj.status_code == 201
+        project_id = proj.json()["project_id"]
 
-        # 4. Client registers (invites) a contractor org.
+        # 4. Client brings a contractor onto the project (invites a new org).
         contractor_email = "contractor.admin@example.com"
-        reg_contractor = await client.post(
-            f"{API}/auth/register-contractor",
+        add = await client.post(
+            f"{API}/projects/{project_id}/contractors",
             json={"org_name": "L&T Construction", "contact_email": contractor_email},
             headers=bearer(client_token),
         )
-        assert reg_contractor.status_code == 201
+        assert add.status_code == 201, add.text
+        assert add.json()["status"] == "PENDING"
 
-        # 5. Retrieve the emailed invitation token (email itself is stubbed).
+        # 5. Contractor admin accepts the emailed invitation + verifies OTP.
         inv = (
             await db_session.execute(
                 select(OrgInvitation).where(OrgInvitation.invited_email == contractor_email)
             )
         ).scalar_one()
-
-        # 6. Contractor accepts the invitation → becomes CONTRACTOR_ADMIN.
-        accept = await client.post(
-            f"{API}/auth/accept-invitation",
-            json={
-                "token": inv.token,
-                "full_name": "Ravi Contractor",
-                "password": DEFAULT_PASSWORD,
-                "confirm_password": DEFAULT_PASSWORD,
-            },
+        contractor_token, contractor_body = await accept_and_verify(
+            client, token=inv.token, email=contractor_email, full_name="Ravi Contractor"
         )
-        assert accept.status_code == 201, accept.text
-        contractor_body = accept.json()
-        contractor_token = contractor_body["access_token"]
         assert contractor_body["user"]["role"] == "CONTRACTOR_ADMIN"
         assert contractor_body["user"]["is_org_admin"] is True
 
-        # 7. Invitation is now marked accepted.
-        await db_session.refresh(inv)
-        assert inv.status == InvitationStatus.ACCEPTED
+        # 6. Before accepting the project link, the contractor sees no projects.
+        assert (await client.get(f"{API}/projects", headers=bearer(contractor_token))).json() == []
 
-        # 8. Contractor can log in.
-        contractor_login = await client.post(
-            f"{API}/auth/login",
-            json={"email": contractor_email, "password": DEFAULT_PASSWORD},
+        # 7. Contractor sees the pending assignment and accepts it.
+        assigned = await client.get(
+            f"{API}/projects/assigned", headers=bearer(contractor_token)
         )
-        assert contractor_login.status_code == 200
-
-        # 9. Org scoping: contractor sees none of the client's projects.
-        contractor_projects = await client.get(
-            f"{API}/projects", headers=bearer(contractor_token)
+        assert assigned.status_code == 200
+        pc = assigned.json()[0]
+        assert pc["status"] == "PENDING"
+        accepted = await client.post(
+            f"{API}/projects/assigned/{pc['pc_id']}/accept",
+            headers=bearer(contractor_token),
         )
-        assert contractor_projects.status_code == 200
-        assert contractor_projects.json() == []
+        assert accepted.status_code == 200
+        assert accepted.json()["status"] == "ACCEPTED"
 
-        # 10. RBAC: contractor cannot create a project (CLIENT_ADMIN only)...
+        # 8. Now the project shows up for the contractor.
+        ctr_projects = await client.get(f"{API}/projects", headers=bearer(contractor_token))
+        assert [p["project_id"] for p in ctr_projects.json()] == [project_id]
+
+        # 9. Contractor registers an RMC supplier for the project.
+        supplier = await client.post(
+            f"{API}/projects/{project_id}/suppliers",
+            json={"supplier_name": "UltraTech RMC"},
+            headers=bearer(contractor_token),
+        )
+        assert supplier.status_code == 201, supplier.text
+        assert supplier.json()["project_id"] == project_id
+
+        # 10. RBAC: contractor cannot create a project (CLIENT_ADMIN only).
         forbidden_project = await client.post(
             f"{API}/projects", json=sample_project_payload(), headers=bearer(contractor_token)
         )
         assert forbidden_project.status_code == 403
 
-        # ...nor register further contractors.
-        forbidden_contractor = await client.post(
-            f"{API}/auth/register-contractor",
-            json={"org_name": "Sub Co", "contact_email": "sub@example.com"},
-            headers=bearer(contractor_token),
+        # 11. Client sees the contractor link as ACCEPTED.
+        ctrs = await client.get(
+            f"{API}/projects/{project_id}/contractors", headers=bearer(client_token)
         )
-        assert forbidden_contractor.status_code == 403
+        assert ctrs.json()[0]["status"] == "ACCEPTED"
 
 
 class TestProjectOrgScoping:

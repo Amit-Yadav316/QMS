@@ -44,13 +44,14 @@ export const AcceptInvitationPage: React.FC = () => {
 
     setSubmitting(true);
     try {
-      await acceptInvitation({
+      const res = await acceptInvitation({
         token,
         full_name: fullName,
         password,
         confirm_password: confirmPassword,
       });
-      navigate('/app', { replace: true });
+      // Account created but inactive — verify the emailed code to activate.
+      navigate('/auth/verify-otp', { state: { email: res.email }, replace: true });
     } catch (err) {
       setError(
         getApiErrorMessage(err, 'Could not accept the invitation. The link may have expired.'),
@@ -64,7 +65,7 @@ export const AcceptInvitationPage: React.FC = () => {
     <div className="qms-auth-page">
       <div className="qms-auth-card">
         <div className="qms-auth-brand">
-          <div className="qms-auth-mark">QM</div>
+          <div className="qms-auth-mark">S</div>
           <h1 className="qms-auth-title">Accept your invitation</h1>
           <p className="qms-auth-sub">Set your name and password to activate your account</p>
         </div>

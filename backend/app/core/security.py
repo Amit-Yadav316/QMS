@@ -17,6 +17,7 @@ JWT payload structure:
   jti   → unique token ID (for blacklisting)
 """
 
+import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -176,3 +177,12 @@ def create_invitation_token() -> str:
     Stored in OrgInvitation.token — not a JWT.
     """
     return str(uuid.uuid4())
+
+
+# ---------------------------------------------------------------------------
+# Email OTP (numeric verification code)
+# ---------------------------------------------------------------------------
+
+def generate_otp(length: int = 6) -> str:
+    """Cryptographically-random numeric code for email verification."""
+    return "".join(secrets.choice("0123456789") for _ in range(length))

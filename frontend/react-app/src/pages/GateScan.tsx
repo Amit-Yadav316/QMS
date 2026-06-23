@@ -1,11 +1,20 @@
 import React, { useState } from 'react';
+import { Navigate, useParams } from 'react-router-dom';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { ScanLine, CheckCircle, Truck, MapPin } from 'lucide-react';
+import { useAuth } from '../hooks/useAuth';
 import './GateScan.css';
 
 export const GateScan: React.FC = () => {
+  const { user } = useAuth();
+  const { projectId } = useParams();
   const [scanned, setScanned] = useState(false);
+
+  // Gate scanning is done by the Supervisor.
+  if (user && user.role !== 'SUPERVISOR') {
+    return <Navigate to={`/app/projects/${projectId}`} replace />;
+  }
 
   return (
     <div className="qms-gatescan-page">

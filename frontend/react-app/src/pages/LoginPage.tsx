@@ -13,7 +13,7 @@ import './LoginPage.css';
 type Mode = 'login' | 'register';
 
 export const LoginPage: React.FC = () => {
-  const { isAuthenticated, login, register } = useAuth();
+  const { isAuthenticated, login, register, resendOtp } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const from = (location.state as { from?: string } | null)?.from ?? '/app';
@@ -49,6 +49,7 @@ export const LoginPage: React.FC = () => {
     try {
       if (mode === 'login') {
         await login(email, password);
+        navigate(from, { replace: true });
       } else {
         await register({
           org_name: orgName,
@@ -58,10 +59,18 @@ export const LoginPage: React.FC = () => {
           password,
           confirm_password: confirmPassword,
         });
+        // Account created but inactive — go verify the emailed code.
+        navigate('/auth/verify-otp', { state: { email } });
       }
-      navigate(from, { replace: true });
     } catch (err) {
-      setError(getApiErrorMessage(err, 'Unable to sign in. Please try again.'));
+      const msg = getApiErrorMessage(err, 'Unable to sign in. Please try again.');
+      // Logging in to an unverified account → route to OTP and resend a code.
+      if (mode === 'login' && msg.toLowerCase().includes('not verified')) {
+        try { await resendOtp(email); } catch { /* best-effort */ }
+        navigate('/auth/verify-otp', { state: { email } });
+        return;
+      }
+      setError(msg);
     } finally {
       setSubmitting(false);
     }
@@ -73,10 +82,10 @@ export const LoginPage: React.FC = () => {
     <div className="qms-auth-page">
       <div className="qms-auth-card">
         <div className="qms-auth-brand">
-          <div className="qms-auth-mark">QM</div>
+          <div className="qms-auth-mark">S</div>
           <h1 className="qms-auth-title">{isRegister ? 'Create your account' : 'Welcome back'}</h1>
           <p className="qms-auth-sub">
-            {isRegister ? 'Register your company and admin account' : 'Log in to your QMS account'}
+            {isRegister ? 'Register your company and admin account' : 'Log in to your Strata account'}
           </p>
         </div>
 
@@ -142,7 +151,7 @@ export const LoginPage: React.FC = () => {
               ? 'Please wait…'
               : isRegister
                 ? 'Create account'
-                : 'Sign in to QMS'}
+                : 'Sign in to Strata'}
           </Button>
         </form>
 

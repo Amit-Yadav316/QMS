@@ -92,12 +92,21 @@ async def db_session(engine) -> AsyncSession:
 @pytest_asyncio.fixture
 async def client(engine, monkeypatch) -> AsyncClient:
     """HTTP client bound to the app, wired to the test DB with email stubbed."""
+    from tests import mailbox
+
+    mailbox.reset()
 
     async def _no_email(*args, **kwargs):
         return None
 
+    async def _capture_otp(email, code, full_name=None):
+        mailbox.OTP_CODES[email] = code
+
     monkeypatch.setattr(
         "app.services.auth_service.send_invitation_email", _no_email
+    )
+    monkeypatch.setattr(
+        "app.services.auth_service.send_otp_email", _capture_otp
     )
 
     TestSession = async_sessionmaker(

@@ -95,6 +95,74 @@ export interface ProjectResponse {
   created_at: string;
 }
 
+// ── Project-scoped: membership, contractors, access ─────────────────────────
+
+export type ProjectRoleValue =
+  | 'CLIENT_LEAD'
+  | 'CONTRACTOR_LEAD'
+  | 'PROJECT_MANAGER'
+  | 'QUALITY_ENGINEER'
+  | 'SUPERVISOR';
+
+export type ProjectMemberStatus = 'ACTIVE' | 'UNVERIFIED' | 'INVITED';
+export type ContractorLinkStatus = 'PENDING' | 'ACCEPTED' | 'DECLINED';
+
+export interface ProjectAccess {
+  side: 'CLIENT' | 'CONTRACTOR';
+  can_manage_client_side: boolean;
+  can_manage_contractor_side: boolean;
+  is_contractor_admin: boolean;
+}
+
+export interface ProjectDetail extends ProjectResponse {
+  access: ProjectAccess;
+}
+
+export interface ProjectMember {
+  email: string;
+  full_name: string | null;
+  project_role: ProjectRoleValue | string;
+  status: ProjectMemberStatus;
+  user_id: number | null;
+  assigned_at: string | null;
+}
+
+export interface ProjectMemberCreate {
+  email: string;
+  project_role: ProjectRoleValue;
+}
+
+export interface ProjectContractor {
+  pc_id: number;
+  project_id: number;
+  contractor_org_id: number;
+  contractor_org_name: string;
+  status: ContractorLinkStatus;
+  scope: string | null;
+  assigned_at: string;
+  responded_at: string | null;
+}
+
+export interface ProjectContractorCreate {
+  contractor_org_id?: number | null;
+  org_name?: string | null;
+  contact_email?: string | null;
+  contact_phone?: string | null;
+  scope?: string | null;
+}
+
+export interface AssignedProject {
+  pc_id: number;
+  project_id: number;
+  project_name: string;
+  project_code: string | null;
+  city: string | null;
+  state: string | null;
+  status: ContractorLinkStatus;
+  scope: string | null;
+  assigned_at: string;
+}
+
 // ── Suppliers ─────────────────────────────────────────────────────────────
 
 export interface SupplierCreate {

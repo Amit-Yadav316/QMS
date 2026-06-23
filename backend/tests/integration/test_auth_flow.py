@@ -6,22 +6,51 @@ from tests.helpers import (
     bearer,
     register_and_token,
     register_client_account,
+    verify_otp,
 )
 
 
 class TestRegister:
-    async def test_register_returns_tokens_and_client_admin(self, client):
+    async def test_register_returns_otp_challenge(self, client):
         resp = await register_client_account(client)
         assert resp.status_code == 201, resp.text
+        body = resp.json()
+        # No tokens yet — account is pending email verification.
+        assert body["otp_required"] is True
+        assert body["email"] == "client.admin@example.com"
+        assert "access_token" not in body
+
+    async def test_verify_otp_activates_and_returns_tokens(self, client):
+        await register_client_account(client)
+        resp = await verify_otp(client, "client.admin@example.com")
+        assert resp.status_code == 200, resp.text
         body = resp.json()
         assert body["access_token"]
         assert body["refresh_token"]
         assert body["token_type"] == "bearer"
         user = body["user"]
-        assert user["email"] == "client.admin@example.com"
         assert user["role"] == "CLIENT_ADMIN"
         assert user["is_org_admin"] is True
         assert user["is_active"] is True
+
+    async def test_verify_otp_wrong_code_is_400(self, client):
+        await register_client_account(client)
+        resp = await client.post(
+            f"{API}/auth/verify-otp",
+            json={"email": "client.admin@example.com", "code": "000000"},
+        )
+        assert resp.status_code == 400
+
+    async def test_verify_otp_on_active_account_issues_no_tokens(self, client):
+        """Security regression: an already-active account must NOT receive tokens
+        from the public verify-otp endpoint with an arbitrary code."""
+        await register_and_token(client)  # registers + verifies → active account
+        resp = await client.post(
+            f"{API}/auth/verify-otp",
+            json={"email": "client.admin@example.com", "code": "000000"},
+        )
+        assert resp.status_code == 400, resp.text
+        assert "access_token" not in resp.json()
 
     async def test_register_duplicate_email_conflicts(self, client):
         first = await register_client_account(client)
@@ -58,7 +87,8 @@ class TestRegister:
 
 class TestLogin:
     async def test_login_success(self, client):
-        await register_client_account(client)
+        # register_and_token completes OTP verification, activating the account.
+        await register_and_token(client)
         resp = await client.post(
             f"{API}/auth/login",
             json={"email": "client.admin@example.com", "password": DEFAULT_PASSWORD},
@@ -67,6 +97,15 @@ class TestLogin:
         body = resp.json()
         assert body["access_token"]
         assert body["user"]["role"] == "CLIENT_ADMIN"
+
+    async def test_login_before_verification_is_403(self, client):
+        # Account exists but hasn't completed OTP — login is blocked.
+        await register_client_account(client)
+        resp = await client.post(
+            f"{API}/auth/login",
+            json={"email": "client.admin@example.com", "password": DEFAULT_PASSWORD},
+        )
+        assert resp.status_code == 403
 
     async def test_login_wrong_password_is_401(self, client):
         await register_client_account(client)
@@ -105,8 +144,8 @@ class TestMe:
 
 class TestRefreshAndLogout:
     async def test_refresh_issues_working_access_token(self, client):
-        resp = await register_client_account(client)
-        refresh = resp.json()["refresh_token"]
+        _, body = await register_and_token(client)
+        refresh = body["refresh_token"]
 
         refreshed = await client.post(
             f"{API}/auth/refresh", json={"refresh_token": refresh}

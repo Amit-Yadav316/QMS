@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     MAIL_USERNAME: str
     MAIL_PASSWORD: str
     MAIL_FROM: str
-    MAIL_FROM_NAME: str = "Construction QMS"
+    MAIL_FROM_NAME: str = "Strata"
     MAIL_PORT: int = 587
     MAIL_SERVER: str = "smtp.gmail.com"
     MAIL_STARTTLS: bool = True

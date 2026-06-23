@@ -183,7 +183,14 @@ class ProjectContractor(Base):
     )
     # e.g. "Phase I", "Phase II", "Civil", "Structural"
     scope: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    # CLIENT_ADMIN user who created this assignment
+    # Contractor accept/decline of the project: PENDING | ACCEPTED | DECLINED
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default="PENDING"
+    )
+    responded_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # CLIENT-side user who created this assignment
     assigned_by: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("auth.users.user_id"), nullable=False
     )
@@ -316,6 +323,10 @@ class Supplier(Base):
     contractor_org_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("auth.organisations.org_id"), nullable=False
     )
+    # Project this supplier was registered for (new records require it).
+    project_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("master.projects.project_id"), nullable=True
+    )
     supplier_name: Mapped[str] = mapped_column(String(200), nullable=False)
     plant_location: Mapped[str | None] = mapped_column(String(300), nullable=True)
     plant_distance_km: Mapped[float | None] = mapped_column(Numeric(6, 2), nullable=True)
@@ -413,6 +424,10 @@ class TestingLab(Base):
     lab_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     contractor_org_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("auth.organisations.org_id"), nullable=False
+    )
+    # Project this lab was registered for (new records require it).
+    project_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("master.projects.project_id"), nullable=True
     )
     lab_name: Mapped[str] = mapped_column(String(200), nullable=False)
     lab_type: Mapped[LabType] = mapped_column(

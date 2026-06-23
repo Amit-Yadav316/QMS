@@ -13,7 +13,7 @@ export const LabRegistrationForm: React.FC = () => {
         <div className="qms-page-header-block" style={{ borderBottom: '1px solid var(--gray-200)', paddingBottom: 24, marginBottom: 32 }}>
           <div>
             <h1 className="qms-page-title-main" style={{ color: 'var(--blue)' }}>External Lab Registration</h1>
-            <p className="qms-page-subtitle">Welcome to the QMS Platform. Please register your laboratory details to receive cube samples from Godrej Splendour Phase 2.</p>
+            <p className="qms-page-subtitle">Welcome to Strata. Please register your laboratory details to receive cube samples from Godrej Splendour Phase 2.</p>
           </div>
         </div>
 

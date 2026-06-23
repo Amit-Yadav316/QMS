@@ -1,11 +1,22 @@
 import React from 'react';
+import { Navigate, useParams } from 'react-router-dom';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { X, AlertTriangle, Link as LinkIcon, MessageCircle } from 'lucide-react';
+import { useAuth } from '../hooks/useAuth';
 import './CubeResult.css';
 
 export const CubeResult: React.FC = () => {
+  const { user } = useAuth();
+  const { projectId } = useParams();
+
+  // Cube results are reviewed in-app by the Quality Engineer (lab result entry
+  // itself is the external, token-based flow — labs have no portal login).
+  if (user && user.role !== 'QUALITY_ENGINEER') {
+    return <Navigate to={`/app/projects/${projectId}`} replace />;
+  }
+
   return (
     <div className="qms-result-page">
       <div className="qms-result-banner qms-result-banner--fail">

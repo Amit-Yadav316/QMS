@@ -1,13 +1,17 @@
 import React, { useState } from 'react';
+import { Navigate, useParams } from 'react-router-dom';
 import { Card } from '../components/ui/Card';
 import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { Check, X, Plus, QrCode } from 'lucide-react';
+import { useAuth } from '../hooks/useAuth';
 import './PourCardForm.css';
 
 export const PourCardForm: React.FC = () => {
+  const { user } = useAuth();
+  const { projectId } = useParams();
   const [activeSegment, setActiveSegment] = useState<Record<string, string>>({
     shuttering: 'yes',
     reinforcement: 'yes',
@@ -19,6 +23,11 @@ export const PourCardForm: React.FC = () => {
   const handleSegment = (key: string, val: string) => {
     setActiveSegment(prev => ({ ...prev, [key]: val }));
   };
+
+  // Pour cards are raised by the Quality Engineer only.
+  if (user && user.role !== 'QUALITY_ENGINEER') {
+    return <Navigate to={`/app/projects/${projectId}`} replace />;
+  }
 
   return (
     <div className="qms-pour-form">

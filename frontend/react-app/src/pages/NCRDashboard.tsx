@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
+import { useAuth } from '../hooks/useAuth';
 import './NCRDashboard.css';
 
 const NCR_DATA = [
@@ -15,6 +16,8 @@ const NCR_DATA = [
 
 export const NCRDashboard: React.FC = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const canRaise = user?.role === 'QUALITY_ENGINEER';
   const [viewMode, setViewMode] = useState<'list' | 'kanban'>('list');
 
   const getSeverityBadge = (severity: string) => {
@@ -50,7 +53,9 @@ export const NCRDashboard: React.FC = () => {
               <LayoutGrid size={16} />
             </button>
           </div>
-          <Button variant="primary" icon={<Plus size={16}/>} onClick={() => navigate('/app/ncr/new')}>Log New NCR</Button>
+          {canRaise && (
+            <Button variant="primary" icon={<Plus size={16}/>} onClick={() => navigate('new')}>Log New NCR</Button>
+          )}
         </div>
       </div>
 

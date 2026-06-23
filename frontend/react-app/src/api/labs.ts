@@ -1,22 +1,21 @@
-// Testing labs API — thin typed wrappers over the backend /labs endpoints.
+// Testing labs API — project-scoped wrappers over /projects/{id}/labs.
 // See backend/app/routers/labs.py.
-//
-// Note: these endpoints require an authenticated CONTRACTOR_ADMIN /
-// PROJECT_MANAGER. The public external-lab self-registration via invitation
-// token (used by /external/lab-registration) is a later-phase backend concern
-// and is not yet available here.
 
 import { api } from './client';
 import type { LabCreate, LabResponse } from '../types/master';
 
 export const labsApi = {
-  // CONTRACTOR_ADMIN / PROJECT_MANAGER.
-  create(data: LabCreate): Promise<LabResponse> {
-    return api.post<LabResponse>('/labs', data).then((r) => r.data);
+  // Contractor side (CONTRACTOR_ADMIN of an accepted org, or CONTRACTOR_LEAD).
+  create(projectId: number, data: LabCreate): Promise<LabResponse> {
+    return api
+      .post<LabResponse>(`/projects/${projectId}/labs`, data)
+      .then((r) => r.data);
   },
 
-  // Any authenticated user — scoped to their organisation.
-  list(): Promise<LabResponse[]> {
-    return api.get<LabResponse[]>('/labs').then((r) => r.data);
+  // Anyone who can view the project.
+  list(projectId: number): Promise<LabResponse[]> {
+    return api
+      .get<LabResponse[]>(`/projects/${projectId}/labs`)
+      .then((r) => r.data);
   },
 };

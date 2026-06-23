@@ -1,12 +1,22 @@
 import React from 'react';
+import { Navigate, useParams } from 'react-router-dom';
 import { Card } from '../components/ui/Card';
 import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
 import { Button } from '../components/ui/Button';
 import { ChevronUp, AlertTriangle } from 'lucide-react';
+import { useAuth } from '../hooks/useAuth';
 import './ProjectMasterForm.css';
 
 export const NCRForm: React.FC = () => {
+  const { user } = useAuth();
+  const { projectId } = useParams();
+
+  // NCRs are raised by the Quality Engineer only.
+  if (user && user.role !== 'QUALITY_ENGINEER') {
+    return <Navigate to={`/app/projects/${projectId}/ncr`} replace />;
+  }
+
   return (
     <div className="qms-form-page">
       <div className="qms-page-header-block">

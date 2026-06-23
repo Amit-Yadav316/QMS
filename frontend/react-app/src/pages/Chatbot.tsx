@@ -5,7 +5,7 @@ import './Chatbot.css';
 
 export const Chatbot: React.FC = () => {
   const [messages, setMessages] = useState([
-    { role: 'assistant', text: 'Hello! I am your QMS Assistant. I can analyze test results, trace pours, and explain quality parameters. What would you like to know?' }
+    { role: 'assistant', text: 'Hello! I am your Strata Assistant. I can analyze test results, trace pours, and explain quality parameters. What would you like to know?' }
   ]);
   const [input, setInput] = useState('');
 
@@ -28,7 +28,7 @@ export const Chatbot: React.FC = () => {
           <div className="qms-chat-title">
             <Bot className="qms-bot-icon" size={24} />
             <div>
-              <h2>QMS AI Assistant</h2>
+              <h2>Strata AI Assistant</h2>
               <p>Powered by RAG — Context-aware project querying</p>
             </div>
           </div>

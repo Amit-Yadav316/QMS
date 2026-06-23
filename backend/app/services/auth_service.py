@@ -2,16 +2,20 @@
 auth_service.py — all auth business logic
 """
 
+import logging
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.core.email import send_invitation_email
+from app.core.email import send_invitation_email, send_otp_email
 from app.core.exceptions import (
     AlreadyExistsError,
+    EmailAlreadyVerifiedError,
+    EmailNotVerifiedError,
     InvalidCredentialsError,
     InvalidInvitationError,
+    InvalidOtpError,
     InvalidTokenError,
     InvitationAlreadyUsedError,
 )
@@ -20,6 +24,7 @@ from app.core.security import (
     create_invitation_token,
     create_refresh_token,
     decode_token,
+    generate_otp,
     hash_password,
     verify_password,
 )
@@ -34,15 +39,53 @@ from app.repositories.auth_repo import AuthRepository
 from app.schemas.auth import (
     AcceptInvitationRequest,
     AccessTokenResponse,
-    ContractorRegisterRequest,
     InviteRequest,
     LoginRequest,
     MeResponse,
     OrgRegisterRequest,
     OrgResponse,
+    OtpChallengeResponse,
+    ResendOtpRequest,
+    TeamMemberResponse,
     TokenResponse,
     UserResponse,
+    VerifyOtpRequest,
 )
+
+logger = logging.getLogger(__name__)
+
+OTP_EXPIRY_MINUTES = 10
+
+
+async def _try_send_invitation_email(**kwargs) -> None:
+    """
+    Send an invitation email, but never let an SMTP failure roll back the
+    invitation that was just created. On failure we log the accept link so the
+    flow still works in local dev (where SMTP may be unconfigured/unreachable).
+    """
+    token = kwargs.get("token")
+    invited_email = kwargs.get("invited_email")
+    try:
+        await send_invitation_email(**kwargs)
+    except Exception as exc:  # noqa: BLE001 — best-effort email, must not 500
+        accept_url = f"{settings.FRONTEND_URL}/auth/accept-invitation?token={token}"
+        logger.warning(
+            "Invitation email to %s failed (%s). Accept link: %s",
+            invited_email,
+            exc,
+            accept_url,
+        )
+
+
+async def _try_send_otp_email(email: str, code: str, full_name: str | None) -> None:
+    """
+    Send the verification code, but never let an SMTP failure roll back the
+    pending account. On failure we log the code so local dev still works.
+    """
+    try:
+        await send_otp_email(email=email, code=code, full_name=full_name)
+    except Exception as exc:  # noqa: BLE001 — best-effort email, must not 500
+        logger.warning("OTP email to %s failed (%s). Code: %s", email, exc, code)
 
 
 class AuthService:
@@ -52,8 +95,12 @@ class AuthService:
 
     # ── Client self-registration ─────────────────────────────────────────────
 
-    async def register_client(self, data: OrgRegisterRequest) -> TokenResponse:
-        """Client creates their org and first admin user in one step."""
+    async def register_client(self, data: OrgRegisterRequest) -> OtpChallengeResponse:
+        """
+        Client creates their org and first admin user. The user is created
+        inactive and must verify the emailed OTP (via verify_otp) before any
+        tokens are issued.
+        """
         if await self.repo.email_exists(data.contact_email):
             raise AlreadyExistsError("Email")
 
@@ -71,9 +118,11 @@ class AuthService:
             full_name=data.full_name,
             role=UserRole.CLIENT_ADMIN,
             is_org_admin=True,
+            is_active=False,
         )
 
-        return self._build_token_response(user)
+        await self._issue_otp(user, purpose="SIGNUP")
+        return OtpChallengeResponse(email=user.email)
 
     # ── Login ────────────────────────────────────────────────────────────────
 
@@ -84,8 +133,10 @@ class AuthService:
         if not user or not verify_password(data.password, user.hashed_password):
             raise InvalidCredentialsError()
 
+        # Credentials are correct but the account hasn't been activated yet —
+        # tell the caller so the UI can route to the OTP screen.
         if not user.is_active:
-            raise InvalidCredentialsError()
+            raise EmailNotVerifiedError()
 
         return self._build_token_response(user)
 
@@ -126,56 +177,6 @@ class AuthService:
             expires_at=expires_at,
         )
 
-    # ── Client registers contractor ──────────────────────────────────────────
-
-    async def register_contractor(
-        self,
-        data: ContractorRegisterRequest,
-        client_user: User,
-    ) -> OrgResponse:
-        """
-        Client creates a contractor org and automatically sends
-        an activation email to the contractor's contact email.
-
-        Contractor activates as CONTRACTOR_ADMIN.
-        They then invite their own Project Managers.
-        """
-        # Create contractor org
-        org = await self.repo.create_org(
-            org_name=data.org_name,
-            org_type=OrgType.CONTRACTOR,
-            contact_email=data.contact_email,
-            contact_phone=data.contact_phone,
-            registered_by_org_id=client_user.org_id,
-        )
-
-        # Auto-create invitation for contractor admin
-        token = create_invitation_token()
-        expires_at = datetime.now(UTC) + timedelta(hours=72)
-
-        await self.repo.create_invitation(
-            org_id=org.org_id,
-            invited_email=data.contact_email,
-            role=UserRole.CONTRACTOR_ADMIN,
-            invited_by=client_user.user_id,
-            token=token,
-            expires_at=expires_at,
-        )
-
-        # Get client org name for email
-        client_org = await self.repo.get_org_by_id(client_user.org_id)
-
-        # Send activation email automatically
-        await send_invitation_email(
-            invited_email=data.contact_email,
-            invited_by_name=client_org.org_name,
-            org_name=data.org_name,
-            role="Contractor Admin",
-            token=token,
-        )
-
-        return OrgResponse.model_validate(org)
-
     # ── Invitation flow ──────────────────────────────────────────────────────
 
     async def invite_user(
@@ -186,9 +187,12 @@ class AuthService:
         """
         Sends an email invitation to join the inviting user's org.
 
-        CLIENT_ADMIN     → invites CONTRACTOR_ADMIN
-        CONTRACTOR_ADMIN → invites PROJECT_MANAGER
-        PROJECT_MANAGER  → invites QUALITY_ENGINEER / SUPERVISOR
+        Permission (who may invite which role) is enforced upstream in the
+        router via _validate_invite_permission:
+          CLIENT_ADMIN     → CLIENT_USER
+          CONTRACTOR_ADMIN → CONTRACTOR_USER, PROJECT_MANAGER,
+                             SUPERVISOR, QUALITY_ENGINEER
+          CONTRACTOR_USER  → PROJECT_MANAGER, SUPERVISOR, QUALITY_ENGINEER
         """
         token = create_invitation_token()
         expires_at = datetime.now(UTC) + timedelta(hours=48)
@@ -204,7 +208,7 @@ class AuthService:
 
         org = await self.repo.get_org_by_id(inviting_user.org_id)
 
-        await send_invitation_email(
+        await _try_send_invitation_email(
             invited_email=data.invited_email,
             invited_by_name=inviting_user.full_name,
             org_name=org.org_name,
@@ -216,8 +220,11 @@ class AuthService:
 
     async def accept_invitation(
         self, data: AcceptInvitationRequest
-    ) -> TokenResponse:
-        """User accepts invitation and creates their account."""
+    ) -> OtpChallengeResponse:
+        """
+        User accepts an invitation and creates their (inactive) account. They
+        must then verify the emailed OTP (via verify_otp) before tokens issue.
+        """
         invitation = await self.repo.get_invitation_by_token(data.token)
 
         if not invitation:
@@ -243,11 +250,73 @@ class AuthService:
             full_name=data.full_name,
             role=invitation.role,
             is_org_admin=is_first_user,
+            is_active=False,
         )
+
+        # If the invite carried a project assignment, record the membership now
+        # (it shows as UNVERIFIED in the team list until they verify the OTP).
+        if invitation.project_id and invitation.project_role:
+            await self.repo.create_project_member(
+                project_id=invitation.project_id,
+                user_id=user.user_id,
+                org_id=user.org_id,
+                project_role=invitation.project_role,
+                assigned_by=invitation.invited_by,
+            )
 
         await self.repo.mark_invitation_accepted(invitation.invitation_id)
 
+        await self._issue_otp(user, purpose="INVITE")
+        return OtpChallengeResponse(email=user.email)
+
+    # ── Email OTP (activation) ─────────────────────────────────────────────────
+
+    async def _issue_otp(self, user: User, purpose: str) -> None:
+        """Generate, store (hashed) and email a fresh OTP for a user."""
+        code = generate_otp()
+        expires_at = datetime.now(UTC) + timedelta(minutes=OTP_EXPIRY_MINUTES)
+        await self.repo.create_otp(
+            user_id=user.user_id,
+            email=user.email,
+            code_hash=hash_password(code),
+            purpose=purpose,
+            expires_at=expires_at,
+        )
+        await _try_send_otp_email(email=user.email, code=code, full_name=user.full_name)
+
+    async def verify_otp(self, data: VerifyOtpRequest) -> TokenResponse:
+        """Validate the code, activate the account, and return tokens."""
+        user = await self.repo.get_user_by_email(data.email)
+        if not user:
+            raise InvalidOtpError()
+
+        # Already-active accounts must authenticate via /auth/login — NEVER issue
+        # tokens here without a valid code, or this public endpoint becomes an
+        # email-only account-takeover bypass.
+        if user.is_active:
+            raise EmailAlreadyVerifiedError()
+
+        otp = await self.repo.get_latest_active_otp(data.email)
+        if not otp or otp.expires_at < datetime.now(UTC):
+            raise InvalidOtpError()
+
+        if not verify_password(data.code, otp.code_hash):
+            raise InvalidOtpError()
+
+        await self.repo.mark_otp_consumed(otp.otp_id)
+        await self.repo.activate_user(user.user_id)
+        user.is_active = True
+
         return self._build_token_response(user)
+
+    async def resend_otp(self, data: ResendOtpRequest) -> OtpChallengeResponse:
+        """Issue a fresh OTP for a not-yet-verified account."""
+        user = await self.repo.get_user_by_email(data.email)
+        # Only issue for a real, still-inactive user. Always return the same
+        # response so we don't leak which emails exist / are verified.
+        if user and not user.is_active:
+            await self._issue_otp(user, purpose="RESEND")
+        return OtpChallengeResponse(email=data.email)
 
     # ── Me ───────────────────────────────────────────────────────────────────
 
@@ -257,6 +326,42 @@ class AuthService:
             user=UserResponse.model_validate(user),
             organisation=OrgResponse.model_validate(org),
         )
+
+    # ── Team directory ─────────────────────────────────────────────────────────
+
+    async def get_team(self, user: User) -> list[TeamMemberResponse]:
+        """
+        Everyone in the current user's org: active/unverified users plus
+        pending invitations that haven't been accepted yet.
+        """
+        users = await self.repo.get_users_by_org(user.org_id)
+        members = [
+            TeamMemberResponse(
+                email=u.email,
+                full_name=u.full_name,
+                role=u.role,
+                status="ACTIVE" if u.is_active else "UNVERIFIED",
+                is_org_admin=u.is_org_admin,
+                joined_at=u.created_at,
+            )
+            for u in users
+        ]
+
+        user_emails = {u.email for u in users}
+        invitations = await self.repo.get_pending_invitations_by_org(user.org_id)
+        members.extend(
+            TeamMemberResponse(
+                email=inv.invited_email,
+                full_name=None,
+                role=inv.role,
+                status="INVITED",
+                is_org_admin=False,
+                joined_at=None,
+            )
+            for inv in invitations
+            if inv.invited_email not in user_emails
+        )
+        return members
 
     # ── Helpers ──────────────────────────────────────────────────────────────
 

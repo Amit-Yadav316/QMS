@@ -129,6 +129,7 @@ class SupplierCreate(BaseModel):
 class SupplierResponse(BaseModel):
     supplier_id: int
     contractor_org_id: int
+    project_id: int | None
     supplier_name: str
     plant_name: str | None
     plant_location: str | None
@@ -170,6 +171,7 @@ class LabCreate(BaseModel):
 class LabResponse(BaseModel):
     lab_id: int
     contractor_org_id: int
+    project_id: int | None
     lab_name: str
     lab_type: LabType
     registration_number: str | None
@@ -182,3 +184,69 @@ class LabResponse(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+# ---------------------------------------------------------------------------
+# Project membership, contractors, and access (project-scoped model)
+# ---------------------------------------------------------------------------
+
+class ProjectMemberCreate(BaseModel):
+    """Assign someone to a project. If a user with this email already exists in
+    the caller's org they're assigned directly; otherwise they're invited."""
+    email: EmailStr
+    project_role: str  # app.models.auth.ProjectRole value
+
+
+class ProjectMemberResponse(BaseModel):
+    email: str
+    full_name: str | None
+    project_role: str
+    status: str  # ACTIVE | UNVERIFIED | INVITED
+    user_id: int | None
+    assigned_at: datetime | None
+
+
+class ProjectContractorCreate(BaseModel):
+    """Bring a contractor onto a project — either an existing contractor org
+    (contractor_org_id) or a brand-new one (org_name + contact_email)."""
+    contractor_org_id: int | None = None
+    org_name: str | None = None
+    contact_email: EmailStr | None = None
+    contact_phone: str | None = None
+    scope: str | None = None
+
+
+class ProjectContractorResponse(BaseModel):
+    pc_id: int
+    project_id: int
+    contractor_org_id: int
+    contractor_org_name: str
+    status: str  # PENDING | ACCEPTED | DECLINED
+    scope: str | None
+    assigned_at: datetime
+    responded_at: datetime | None
+
+
+class AssignedProjectResponse(BaseModel):
+    """A contractor org's view of a project it's been assigned to (accept screen)."""
+    pc_id: int
+    project_id: int
+    project_name: str
+    project_code: str | None
+    city: str | None
+    state: str | None
+    status: str
+    scope: str | None
+    assigned_at: datetime
+
+
+class ProjectAccess(BaseModel):
+    """The viewer's capabilities on a project — drives role-aware UI."""
+    side: str  # CLIENT | CONTRACTOR
+    can_manage_client_side: bool
+    can_manage_contractor_side: bool
+    is_contractor_admin: bool
+
+
+class ProjectDetailResponse(ProjectResponse):
+    access: ProjectAccess

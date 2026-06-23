@@ -41,13 +41,6 @@ class OrgRegisterRequest(BaseModel):
         return v
 
 
-class ContractorRegisterRequest(BaseModel):
-    """Client registers a contractor org on portal."""
-    org_name: str
-    contact_email: EmailStr
-    contact_phone: str | None = None
-
-
 class OrgResponse(BaseModel):
     org_id: int
     org_name: str
@@ -112,9 +105,10 @@ class InviteRequest(BaseModel):
     """
     Invite a user to join an org.
     Used for:
-      - Client inviting contractor admin
-      - Contractor inviting PM
-      - PM inviting QE/Supervisor
+      - Client admin inviting a client user
+      - Contractor admin inviting a contractor user or team member
+        (PM / Supervisor / QE)
+      - Contractor user inviting team members (PM / Supervisor / QE)
     """
     invited_email: EmailStr
     role: UserRole
@@ -161,3 +155,45 @@ class MeResponse(BaseModel):
     """Current user with their organisation details."""
     user: UserResponse
     organisation: OrgResponse
+
+
+# ---------------------------------------------------------------------------
+# OTP (email verification — activation only)
+# ---------------------------------------------------------------------------
+
+class OtpChallengeResponse(BaseModel):
+    """
+    Returned by signup and accept-invitation. The account is created but
+    inactive; the user must verify the emailed code via /auth/verify-otp
+    before tokens are issued.
+    """
+    email: EmailStr
+    otp_required: bool = True
+    message: str = "We emailed you a verification code. Enter it to activate your account."
+
+
+class VerifyOtpRequest(BaseModel):
+    email: EmailStr
+    code: str
+
+
+class ResendOtpRequest(BaseModel):
+    email: EmailStr
+
+
+# ---------------------------------------------------------------------------
+# Team directory
+# ---------------------------------------------------------------------------
+
+class TeamMemberResponse(BaseModel):
+    """
+    A row in the org's team directory: either an existing user or a pending
+    invitation. status is ACTIVE / UNVERIFIED (user awaiting OTP) / INVITED
+    (invitation sent, not yet accepted).
+    """
+    email: str
+    full_name: str | None
+    role: UserRole
+    status: str
+    is_org_admin: bool
+    joined_at: datetime | None

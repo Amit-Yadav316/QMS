@@ -1,68 +1,79 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AppLayout } from './components/layout/AppLayout';
 import { ProtectedRoute } from './components/ProtectedRoute';
+import { LandingPage } from './pages/LandingPage';
 import { LoginPage } from './pages/LoginPage';
 import { AcceptInvitationPage } from './pages/AcceptInvitationPage';
-import { Dashboard } from './pages/Dashboard';
+import { VerifyOtpPage } from './pages/VerifyOtpPage';
+import { LabRegistrationForm } from './pages/LabRegistrationForm';
+
+// Workspace entry + project listing
+import { AppHome } from './pages/AppHome';
+import { ProjectsList } from './pages/ProjectsList';
+import { ProjectMasterForm } from './pages/ProjectMasterForm';
+import { AssignedProjects } from './pages/AssignedProjects';
+
+// Project workspace (everything below is scoped to one project)
+import { ProjectLayout } from './components/layout/ProjectLayout';
+import { ProjectOverview } from './pages/project/ProjectOverview';
+import { ProjectTeam } from './pages/project/ProjectTeam';
+import { ProjectContractors } from './pages/project/ProjectContractors';
+import { ProjectSuppliers } from './pages/project/ProjectSuppliers';
+import { ProjectLabs } from './pages/project/ProjectLabs';
 import { Analytics } from './pages/Analytics';
+import { DocumentManagement } from './pages/DocumentManagement';
+import { AuditManagement } from './pages/AuditManagement';
 import { Traceability } from './pages/Traceability';
 import { PourCardForm } from './pages/PourCardForm';
 import { CubeResult } from './pages/CubeResult';
-
-// New Phase 2 Pages
-import { ProjectMasterForm } from './pages/ProjectMasterForm';
-import { RMCSupplierForm } from './pages/RMCSupplierForm';
-import { ContractorRegistrationForm } from './pages/ContractorRegistrationForm';
-import { UserRegistrationForm } from './pages/UserRegistrationForm';
-import { LabRegistrationForm } from './pages/LabRegistrationForm';
 import { GateScan } from './pages/GateScan';
 import { NCRDashboard } from './pages/NCRDashboard';
 import { NCRForm } from './pages/NCRForm';
 import { Chatbot } from './pages/Chatbot';
-import { LandingPage } from './pages/LandingPage';
-import { DocumentManagement } from './pages/DocumentManagement';
-import { AuditManagement } from './pages/AuditManagement';
-import { SupplierDashboard } from './pages/SupplierDashboard';
 
 function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* External Routes (No Sidebar) */}
+        {/* External / public routes */}
         <Route path="/external/lab-registration" element={<LabRegistrationForm />} />
-        
         <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/auth/accept-invitation" element={<AcceptInvitationPage />} />
+        <Route path="/auth/verify-otp" element={<VerifyOtpPage />} />
 
-        {/* Internal Authenticated Routes — guarded by ProtectedRoute */}
+        {/* Authenticated app */}
         <Route element={<ProtectedRoute />}>
-        <Route path="/app" element={<AppLayout />}>
-          <Route index element={<Dashboard />} />
-          <Route path="analytics" element={<Analytics />} />
-          <Route path="documents" element={<DocumentManagement />} />
-          <Route path="audits" element={<AuditManagement />} />
-          <Route path="trace" element={<Traceability />} />
-          
-          <Route path="projects/new" element={<ProjectMasterForm />} />
-          <Route path="contractors/new" element={<ContractorRegistrationForm />} />
-          <Route path="team" element={<UserRegistrationForm />} />
-          <Route path="suppliers" element={<SupplierDashboard />} />
-          <Route path="suppliers/new" element={<RMCSupplierForm />} />
-          
-          <Route path="pours/new" element={<PourCardForm />} />
-          <Route path="results/:id" element={<CubeResult />} />
-          
-          <Route path="gate" element={<GateScan />} />
-          <Route path="ncr" element={<NCRDashboard />} />
-          <Route path="ncr/new" element={<NCRForm />} />
-          <Route path="chatbot" element={<Chatbot />} />
+          <Route path="/app" element={<AppLayout />}>
+            {/* Landing → picker (admins) or single project (users) */}
+            <Route index element={<AppHome />} />
+            <Route path="projects" element={<ProjectsList />} />
+            <Route path="projects/new" element={<ProjectMasterForm />} />
+            <Route path="assigned" element={<AssignedProjects />} />
 
-          
-          {/* Fallback routes for demo purposes */}
-          <Route path="*" element={<Navigate to="/app" replace />} />
+            {/* Project workspace — all pages scoped to :projectId */}
+            <Route path="projects/:projectId" element={<ProjectLayout />}>
+              <Route index element={<ProjectOverview />} />
+              <Route path="analytics" element={<Analytics />} />
+              <Route path="documents" element={<DocumentManagement />} />
+              <Route path="audits" element={<AuditManagement />} />
+              <Route path="trace" element={<Traceability />} />
+              <Route path="pours/new" element={<PourCardForm />} />
+              <Route path="results/:id" element={<CubeResult />} />
+              <Route path="gate" element={<GateScan />} />
+              <Route path="ncr" element={<NCRDashboard />} />
+              <Route path="ncr/new" element={<NCRForm />} />
+              <Route path="chatbot" element={<Chatbot />} />
+              <Route path="team" element={<ProjectTeam />} />
+              <Route path="contractors" element={<ProjectContractors />} />
+              <Route path="suppliers" element={<ProjectSuppliers />} />
+              <Route path="labs" element={<ProjectLabs />} />
+            </Route>
+
+            <Route path="*" element={<Navigate to="/app" replace />} />
+          </Route>
         </Route>
-        </Route>
+
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

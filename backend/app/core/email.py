@@ -76,8 +76,38 @@ async def send_invitation_email(
     })
 
     message = MessageSchema(
-        subject=f"You have been invited to join {org_name} on Construction QMS",
+        subject=f"You have been invited to join {org_name} on Strata",
         recipients=[invited_email],
+        body=html_body,
+        subtype=MessageType.html,
+    )
+    await fastmail.send_message(message)
+
+
+async def send_otp_email(
+    email: str,
+    code: str,
+    full_name: str | None = None,
+) -> None:
+    """
+    Sent during account activation (signup / invite-accept) with a one-time
+    verification code. Built inline (no template file) to keep it self-contained.
+    """
+    greeting = f"Hi {full_name}," if full_name else "Hi,"
+    html_body = f"""
+    <div style="font-family:Arial,Helvetica,sans-serif;max-width:480px;margin:auto">
+      <h2 style="color:#1e293b">Verify your email</h2>
+      <p>{greeting}</p>
+      <p>Use this code to activate your Strata account:</p>
+      <p style="font-size:32px;font-weight:700;letter-spacing:8px;color:#2563eb">{code}</p>
+      <p style="color:#64748b;font-size:13px">This code expires in 10 minutes.
+      If you didn't request it, you can ignore this email.</p>
+    </div>
+    """
+
+    message = MessageSchema(
+        subject="Your Strata verification code",
+        recipients=[email],
         body=html_body,
         subtype=MessageType.html,
     )

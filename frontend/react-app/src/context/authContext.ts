@@ -8,6 +8,7 @@ import type {
   OrgResponse,
   OrgRegisterRequest,
   AcceptInvitationRequest,
+  OtpChallengeResponse,
 } from '../types/auth';
 
 export interface AuthContextValue {
@@ -17,8 +18,12 @@ export interface AuthContextValue {
   // True only during the initial "validate stored token" bootstrap.
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (data: OrgRegisterRequest) => Promise<void>;
-  acceptInvitation: (data: AcceptInvitationRequest) => Promise<void>;
+  // register/acceptInvitation create an inactive account and return the OTP
+  // challenge (they do NOT log the user in — verifyOtp does that).
+  register: (data: OrgRegisterRequest) => Promise<OtpChallengeResponse>;
+  acceptInvitation: (data: AcceptInvitationRequest) => Promise<OtpChallengeResponse>;
+  verifyOtp: (email: string, code: string) => Promise<void>;
+  resendOtp: (email: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshMe: () => Promise<void>;
 }

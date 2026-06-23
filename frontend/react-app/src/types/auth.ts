@@ -4,7 +4,9 @@
 // Mirrors app.models.auth.UserRole
 export type UserRole =
   | 'CLIENT_ADMIN'
+  | 'CLIENT_USER'
   | 'CONTRACTOR_ADMIN'
+  | 'CONTRACTOR_USER'
   | 'PROJECT_MANAGER'
   | 'QUALITY_ENGINEER'
   | 'SUPERVISOR';
@@ -72,4 +74,17 @@ export interface AcceptInvitationRequest {
   full_name: string;
   password: string;
   confirm_password: string;
+}
+
+// Returned by register + accept-invitation: account is created but inactive
+// until the emailed OTP is verified.
+export interface OtpChallengeResponse {
+  email: string;
+  otp_required: boolean;
+  message: string;
+}
+
+export interface VerifyOtpRequest {
+  email: string;
+  code: string;
 }

@@ -7,7 +7,7 @@ from app.routers import auth, labs, projects, suppliers
 
 def create_app() -> FastAPI:
     app = FastAPI(
-        title="Construction Quality Management System",
+        title="Strata — Construction QMS",
         version="0.1.0",
         docs_url="/docs",
         redoc_url="/redoc",

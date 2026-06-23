@@ -4,7 +4,7 @@ import {
   ShieldCheck, Truck, TestTube, ArrowRight, CheckCircle,
   Zap, Globe, Lock, Play, Building2,
   FileText, Box, Link, AlertTriangle, MessageSquare,
-  ChevronDown, Menu, X, Clock
+  ChevronDown, Menu, X, Clock, Layers
 } from 'lucide-react';
 import './LandingPage.css';
 
@@ -97,7 +97,7 @@ const STATS = [
 
 const TESTIMONIALS = [
   {
-    quote: "We used to have QA managers running around with clipboards. Now everything is on QMS — from the RMC challan to the cube result. Our IS 456 audit took 2 hours instead of 2 days.",
+    quote: "We used to have QA managers running around with clipboards. Now everything is on Strata — from the RMC challan to the cube result. Our IS 456 audit took 2 hours instead of 2 days.",
     name: "Rajiv Mehta",
     role: "QA Head, Tier-1 Contractor",
     project: "32-tower residential project, Pune",
@@ -119,7 +119,7 @@ const TESTIMONIALS = [
 const FAQS = [
   {
     q: "Do we need to install any hardware or app?",
-    a: "No hardware required. QMS runs entirely in the browser — on any phone, tablet or laptop. Guards use a phone camera to scan QR codes. Labs access the portal from any browser. Nothing to install or maintain.",
+    a: "No hardware required. Strata runs entirely in the browser — on any phone, tablet or laptop. Guards use a phone camera to scan QR codes. Labs access the portal from any browser. Nothing to install or maintain.",
   },
   {
     q: "Does it work without internet on site?",
@@ -127,11 +127,11 @@ const FAQS = [
   },
   {
     q: "How does the IS 456:2000 validation actually work?",
-    a: "When a lab uploads a cube result, QMS automatically compares it against the acceptance criteria in IS 456:2000 for the specified grade. If it fails, an NCR is raised automatically and the assigned stakeholders are notified within seconds.",
+    a: "When a lab uploads a cube result, Strata automatically compares it against the acceptance criteria in IS 456:2000 for the specified grade. If it fails, an NCR is raised automatically and the assigned stakeholders are notified within seconds.",
   },
   {
     q: "Can we use our existing RMC supplier's challan format?",
-    a: "Yes. QMS generates a QR-coded digital challan that your RMC supplier attaches to every truck. Alternatively, QMS can integrate with your supplier's existing system. Setup typically takes 1–2 hours per supplier.",
+    a: "Yes. Strata generates a QR-coded digital challan that your RMC supplier attaches to every truck. Alternatively, Strata can integrate with your supplier's existing system. Setup typically takes 1–2 hours per supplier.",
   },
   {
     q: "How long does it take to go live on a new project?",
@@ -200,7 +200,7 @@ const COMPARISON_ROWS = [
 
 export const LandingPage: React.FC = () => {
   const navigate = useNavigate();
-  const { login, register } = useAuth();
+  const { login, register, resendOtp } = useAuth();
   const [scrolled, setScrolled] = useState(false);
   const [showAuth, setShowAuth] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
@@ -241,7 +241,13 @@ export const LandingPage: React.FC = () => {
       await login(loginEmail, loginPassword);
       navigate('/app');
     } catch (err) {
-      setAuthError(getApiErrorMessage(err, 'Incorrect email or password'));
+      const msg = getApiErrorMessage(err, 'Incorrect email or password');
+      if (msg.toLowerCase().includes('not verified')) {
+        try { await resendOtp(loginEmail); } catch { /* best-effort */ }
+        navigate('/auth/verify-otp', { state: { email: loginEmail } });
+        return;
+      }
+      setAuthError(msg);
     } finally {
       setAuthSubmitting(false);
     }
@@ -264,7 +270,8 @@ export const LandingPage: React.FC = () => {
         password: regPassword,
         confirm_password: regConfirm,
       });
-      navigate('/app');
+      // Account created but inactive — verify the emailed code to activate.
+      navigate('/auth/verify-otp', { state: { email: regEmail } });
     } catch (err) {
       setAuthError(getApiErrorMessage(err, 'Could not create your account. Please try again.'));
     } finally {
@@ -284,9 +291,9 @@ export const LandingPage: React.FC = () => {
       <nav className={`lp-nav ${scrolled ? 'lp-nav--scrolled' : ''}`} aria-label="Main navigation">
         <div className="lp-nav-inner">
           <div className="lp-logo">
-            <div className="lp-logo-mark">QM</div>
+            <div className="lp-logo-mark"><Layers size={20} /></div>
             <div>
-              <div className="lp-logo-name">QMS</div>
+              <div className="lp-logo-name">Strata</div>
               <div className="lp-logo-tag">Quality Management</div>
             </div>
           </div>
@@ -332,7 +339,7 @@ export const LandingPage: React.FC = () => {
             </h1>
             <p className="lp-hero-qualifier">Built for contractors managing 5 or more towers and 100 or more pours per month.</p>
             <p className="lp-hero-desc">
-              From the RMC plant to the structural slab — QMS gives you end-to-end
+              From the RMC plant to the structural slab — Strata gives you end-to-end
               visibility of every cubic metre poured on site. Automated validation,
               real-time dashboards and a chatbot that knows your project inside out.
             </p>
@@ -451,7 +458,7 @@ export const LandingPage: React.FC = () => {
       <section className="lp-section lp-section--white" id="chatbot">
         <div className="lp-section-inner lp-chatbot-inner">
           <div className="lp-chatbot-text">
-            <h2 className="lp-section-h2">QMS knows your project.<br />Ask it anything.</h2>
+            <h2 className="lp-section-h2">Strata knows your project.<br />Ask it anything.</h2>
             <p className="lp-section-sub" style={{ textAlign: 'left', marginTop: 16 }}>
               Ask about any pour, batch, supplier, failure or NCR in plain language. Get an answer from your live project data in seconds.
             </p>
@@ -502,7 +509,7 @@ export const LandingPage: React.FC = () => {
         <div className="lp-section-inner">
           <div className="lp-section-header">
             <h2 className="lp-section-h2">What Project Teams Are Saying</h2>
-            <p className="lp-section-sub">From site engineers to QA heads — here's what changed when they switched to QMS.</p>
+            <p className="lp-section-sub">From site engineers to QA heads — here's what changed when they switched to Strata.</p>
           </div>
           <div className="lp-testimonials-grid">
             {TESTIMONIALS.map((t, i) => (
@@ -527,13 +534,13 @@ export const LandingPage: React.FC = () => {
       <section className="lp-section" id="comparison">
         <div className="lp-section-inner">
           <div className="lp-section-header">
-            <h2 className="lp-section-h2">QMS vs. The Way It's Done Now</h2>
+            <h2 className="lp-section-h2">Strata vs. The Way It's Done Now</h2>
             <p className="lp-section-sub">Paper records and WhatsApp groups can't give you the traceability IS 456 demands.</p>
           </div>
           <div className="lp-comparison-table">
             <div className="lp-comparison-header">
               <div className="lp-comparison-feature-col">Feature</div>
-              <div className="lp-comparison-col lp-comparison-col--qms">QMS</div>
+              <div className="lp-comparison-col lp-comparison-col--qms">Strata</div>
               <div className="lp-comparison-col">Paper Records</div>
               <div className="lp-comparison-col">WhatsApp / Excel</div>
             </div>
@@ -579,7 +586,7 @@ export const LandingPage: React.FC = () => {
       <section className="lp-cta-section">
         <div className="lp-cta-inner">
           <h2 className="lp-cta-h2">Stop managing quality in spreadsheets.</h2>
-          <p className="lp-cta-sub">Book a 30-minute live demo. We'll walk through your project type, your current QA process, and show you exactly how QMS fits in.</p>
+          <p className="lp-cta-sub">Book a 30-minute live demo. We'll walk through your project type, your current QA process, and show you exactly how Strata fits in.</p>
           <div className="lp-cta-actions">
             <button className="lp-btn lp-btn--hero" onClick={() => openAuth('register')} aria-label="Book a live demo">
               Book a Live Demo <ArrowRight size={18} />
@@ -596,9 +603,9 @@ export const LandingPage: React.FC = () => {
         <div className="lp-footer-inner">
           <div>
             <div className="lp-logo">
-              <div className="lp-logo-mark">QM</div>
+              <div className="lp-logo-mark"><Layers size={20} /></div>
               <div>
-                <div className="lp-logo-name">QMS</div>
+                <div className="lp-logo-name">Strata</div>
               </div>
             </div>
             <p className="lp-footer-desc">End-to-end concrete quality traceability for construction projects of all scales.</p>
@@ -633,7 +640,7 @@ export const LandingPage: React.FC = () => {
           </div>
         </div>
         <div className="lp-footer-bottom">
-          <span>© 2026 QMS Platform. All rights reserved.</span>
+          <span>© 2026 Strata Platform. All rights reserved.</span>
           <span>IS 456:2000 · IS 1199 · BIS Compliant</span>
         </div>
       </footer>
@@ -645,10 +652,10 @@ export const LandingPage: React.FC = () => {
             <div className="lp-modal-close" onClick={() => setShowAuth(false)} role="button" aria-label="Close">×</div>
 
             <div className="lp-modal-header">
-              <div className="lp-logo-mark" style={{ margin: '0 auto 16px' }}>QM</div>
+              <div className="lp-logo-mark" style={{ margin: '0 auto 16px' }}><Layers size={20} /></div>
               <h2 className="lp-modal-title">{authMode === 'login' ? 'Welcome back' : 'Create your account'}</h2>
               <p className="lp-modal-sub">
-                {authMode === 'login' ? 'Log in to your QMS account' : 'Register your company and admin account'}
+                {authMode === 'login' ? 'Log in to your Strata account' : 'Register your company and admin account'}
               </p>
             </div>
 
@@ -677,7 +684,7 @@ export const LandingPage: React.FC = () => {
                   />
                 </div>
                 <button type="submit" className="lp-btn lp-btn--hero" style={{ width: '100%' }} disabled={authSubmitting}>
-                  {authSubmitting ? 'Signing in…' : 'Sign In to QMS'}
+                  {authSubmitting ? 'Signing in…' : 'Sign In to Strata'}
                 </button>
               </form>
             ) : (

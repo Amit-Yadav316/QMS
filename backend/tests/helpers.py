@@ -2,6 +2,8 @@
 
 from httpx import AsyncClient, Response
 
+from tests import mailbox
+
 API = "/api/v1"
 DEFAULT_PASSWORD = "Password123!"
 
@@ -33,11 +35,47 @@ async def register_client_account(
     )
 
 
+async def verify_otp(client: AsyncClient, email: str) -> Response:
+    """Submit the OTP that was 'emailed' (captured in tests.mailbox)."""
+    code = mailbox.OTP_CODES[email]
+    return await client.post(
+        f"{API}/auth/verify-otp", json={"email": email, "code": code}
+    )
+
+
 async def register_and_token(client: AsyncClient, **kwargs) -> tuple[str, dict]:
-    """Register a client and return (access_token, json_body)."""
+    """Register a client, verify the OTP, and return (access_token, token_body)."""
     resp = await register_client_account(client, **kwargs)
     assert resp.status_code == 201, resp.text
-    body = resp.json()
+    email = kwargs.get("email", "client.admin@example.com")
+    verified = await verify_otp(client, email)
+    assert verified.status_code == 200, verified.text
+    body = verified.json()
+    return body["access_token"], body
+
+
+async def accept_and_verify(
+    client: AsyncClient,
+    *,
+    token: str,
+    email: str,
+    full_name: str = "Invited User",
+    password: str = DEFAULT_PASSWORD,
+) -> tuple[str, dict]:
+    """Accept an invitation then verify its OTP → (access_token, token_body)."""
+    resp = await client.post(
+        f"{API}/auth/accept-invitation",
+        json={
+            "token": token,
+            "full_name": full_name,
+            "password": password,
+            "confirm_password": password,
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    verified = await verify_otp(client, email)
+    assert verified.status_code == 200, verified.text
+    body = verified.json()
     return body["access_token"], body
 
 

@@ -1,8 +1,17 @@
-// Projects API — thin typed wrappers over the backend /projects endpoints.
+// Projects API — typed wrappers over the backend /projects endpoints.
 // See backend/app/routers/projects.py.
 
 import { api } from './client';
-import type { ProjectCreate, ProjectResponse } from '../types/master';
+import type {
+  AssignedProject,
+  ProjectContractor,
+  ProjectContractorCreate,
+  ProjectCreate,
+  ProjectDetail,
+  ProjectMember,
+  ProjectMemberCreate,
+  ProjectResponse,
+} from '../types/master';
 
 export const projectsApi = {
   // CLIENT_ADMIN only.
@@ -10,8 +19,39 @@ export const projectsApi = {
     return api.post<ProjectResponse>('/projects', data).then((r) => r.data);
   },
 
-  // Any authenticated user — scoped to their organisation.
+  // Scoped to the caller (admins: all org projects; users: assigned only).
   list(): Promise<ProjectResponse[]> {
     return api.get<ProjectResponse[]>('/projects').then((r) => r.data);
+  },
+
+  detail(id: number): Promise<ProjectDetail> {
+    return api.get<ProjectDetail>(`/projects/${id}`).then((r) => r.data);
+  },
+
+  // ── Members ──────────────────────────────────────────────────────────────
+  members(id: number): Promise<ProjectMember[]> {
+    return api.get<ProjectMember[]>(`/projects/${id}/members`).then((r) => r.data);
+  },
+  assignMember(id: number, data: ProjectMemberCreate): Promise<ProjectMember> {
+    return api.post<ProjectMember>(`/projects/${id}/members`, data).then((r) => r.data);
+  },
+
+  // ── Contractors (client side) ──────────────────────────────────────────────
+  contractors(id: number): Promise<ProjectContractor[]> {
+    return api.get<ProjectContractor[]>(`/projects/${id}/contractors`).then((r) => r.data);
+  },
+  addContractor(id: number, data: ProjectContractorCreate): Promise<ProjectContractor> {
+    return api.post<ProjectContractor>(`/projects/${id}/contractors`, data).then((r) => r.data);
+  },
+
+  // ── Contractor accept screen ───────────────────────────────────────────────
+  assigned(): Promise<AssignedProject[]> {
+    return api.get<AssignedProject[]>('/projects/assigned').then((r) => r.data);
+  },
+  acceptAssigned(pcId: number): Promise<ProjectContractor> {
+    return api.post<ProjectContractor>(`/projects/assigned/${pcId}/accept`).then((r) => r.data);
+  },
+  declineAssigned(pcId: number): Promise<ProjectContractor> {
+    return api.post<ProjectContractor>(`/projects/assigned/${pcId}/decline`).then((r) => r.data);
   },
 };

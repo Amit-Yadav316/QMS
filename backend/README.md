@@ -120,23 +120,48 @@ Base: `/api/v1`
 
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
-| POST | `/auth/register` | — | Client self-registers (org + CLIENT_ADMIN) |
+| POST | `/auth/register` | — | Client self-registers (org + CLIENT_ADMIN); returns an OTP challenge |
+| POST | `/auth/verify-otp` | — | Verify the emailed code → activate account + tokens |
+| POST | `/auth/resend-otp` | — | Re-send a verification code |
 | POST | `/auth/login` | — | Login, returns access + refresh tokens |
 | POST | `/auth/refresh` | — | New access token from refresh token |
-| POST | `/auth/accept-invitation` | — | Accept invite, create account |
+| POST | `/auth/accept-invitation` | — | Accept invite, create account (returns OTP challenge) |
 | POST | `/auth/logout` | Bearer | Blacklist current access token |
 | GET | `/auth/me` | Bearer | Current user + organisation |
-| POST | `/auth/register-contractor` | CLIENT_ADMIN | Create contractor org + email invite |
+| GET | `/auth/team` | Bearer | Org directory (users + pending invitations) |
 | POST | `/auth/invite` | role-based | Invite a user to your org |
 
-Master-data endpoints: `/projects`, `/suppliers`, `/labs` (each `POST` create + `GET` list,
-scoped to the caller's organisation).
+Account activation uses an **email OTP** (activation only): register / accept-invitation create
+an inactive account and email a 6-digit code; `verify-otp` activates it and issues tokens.
+Login itself is password-only.
 
-### Role hierarchy
+Project-scoped endpoints (visibility + management are scoped per project):
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST/GET | `/projects` | Create (CLIENT_ADMIN) / list (membership-scoped) |
+| GET | `/projects/{id}` | Detail + the viewer's `access` capabilities |
+| GET/POST | `/projects/{id}/members` | List / assign-or-invite a member |
+| GET/POST | `/projects/{id}/contractors` | List / bring a contractor onto the project |
+| GET/POST | `/projects/{id}/suppliers` | List / register an RMC supplier (contractor side) |
+| GET/POST | `/projects/{id}/labs` | List / register a testing lab (contractor side) |
+| GET | `/projects/assigned` | A contractor org's project links (accept screen) |
+| POST | `/projects/assigned/{pc_id}/accept` \| `/decline` | Contractor admin responds |
+
+### Role model
 ```
-CLIENT_ADMIN → invites CONTRACTOR_ADMIN
-CONTRACTOR_ADMIN → invites PROJECT_MANAGER
-PROJECT_MANAGER → invites QUALITY_ENGINEER, SUPERVISOR
+Org roles:     CLIENT_ADMIN, CLIENT_USER, CONTRACTOR_ADMIN, CONTRACTOR_USER,
+               PROJECT_MANAGER, QUALITY_ENGINEER, SUPERVISOR
+Org invites (/auth/invite):
+  CLIENT_ADMIN      → CLIENT_USER
+  CONTRACTOR_ADMIN  → CONTRACTOR_USER, PROJECT_MANAGER, SUPERVISOR, QUALITY_ENGINEER
+  CONTRACTOR_USER   → PROJECT_MANAGER, SUPERVISOR, QUALITY_ENGINEER
+
+Project flow:
+  CLIENT_ADMIN  creates project + assigns CLIENT_LEAD members
+  CLIENT_LEAD   brings on a contractor (project link starts PENDING)
+  CONTRACTOR_ADMIN  accepts the project + assigns CONTRACTOR_LEAD members
+  CONTRACTOR_LEAD   registers suppliers/labs + assigns PROJECT_MANAGER/QE/SUPERVISOR
 ```
 
 ## Docker

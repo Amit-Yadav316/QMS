@@ -41,19 +41,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await refreshMe();
   }, [refreshMe]);
 
+  // register/acceptInvitation create an inactive account and return an OTP
+  // challenge — they do NOT establish a session. verifyOtp does that.
   const register = useCallback(async (data: OrgRegisterRequest) => {
-    const res = await authApi.register(data);
+    return authApi.register(data);
+  }, []);
+
+  const acceptInvitation = useCallback(async (data: AcceptInvitationRequest) => {
+    return authApi.acceptInvitation(data);
+  }, []);
+
+  const verifyOtp = useCallback(async (email: string, code: string) => {
+    const res = await authApi.verifyOtp({ email, code });
     tokenStorage.setSession(res.access_token, res.refresh_token, res.user);
     setUser(res.user);
     await refreshMe();
   }, [refreshMe]);
 
-  const acceptInvitation = useCallback(async (data: AcceptInvitationRequest) => {
-    const res = await authApi.acceptInvitation(data);
-    tokenStorage.setSession(res.access_token, res.refresh_token, res.user);
-    setUser(res.user);
-    await refreshMe();
-  }, [refreshMe]);
+  const resendOtp = useCallback(async (email: string) => {
+    await authApi.resendOtp(email);
+  }, []);
 
   const logout = useCallback(async () => {
     try {
@@ -104,6 +111,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         login,
         register,
         acceptInvitation,
+        verifyOtp,
+        resendOtp,
         logout,
         refreshMe,
       }}
