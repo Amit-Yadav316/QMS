@@ -3,16 +3,19 @@ import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
-import { Plus, FlaskConical, Factory } from 'lucide-react';
+import { Plus, FlaskConical, Factory, ChevronRight } from 'lucide-react';
 import { useProject } from '../../components/layout/ProjectLayout';
 import { projectsApi } from '../../api/projects';
 import { suppliersApi } from '../../api/suppliers';
 import { labsApi } from '../../api/labs';
+import { mixDesignsApi } from '../../api/mixDesigns';
 import { getApiErrorMessage } from '../../api/client';
 import type {
   ConfirmationStatus,
   ContractorLinkStatus,
   LabResponse,
+  MixApprovalStatus,
+  MixDesignResponse,
   ProjectContractor,
   SupplierResponse,
   TowerResponse,
@@ -30,32 +33,100 @@ const CONF_VARIANT: Record<ConfirmationStatus, 'pass' | 'warn' | 'fail'> = {
 const CONF_LABEL: Record<ConfirmationStatus, string> = {
   CONFIRMED: 'Confirmed', PENDING: 'Pending', DECLINED: 'Declined',
 };
+const APPROVAL_VARIANT: Record<MixApprovalStatus, 'pass' | 'fail' | 'warn'> = {
+  APPROVED: 'pass', REJECTED: 'fail', IN_PROGRESS: 'warn',
+};
 
-// One contractor's hired suppliers / labs, listed under its card.
-const HiredList: React.FC<{
-  icon: React.ReactNode;
-  title: string;
-  items: { id: number; name: string; status: ConfirmationStatus }[];
-}> = ({ icon, title, items }) => (
-  <div style={{ flex: 1, minWidth: 220 }}>
-    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, color: 'var(--gray-600)' }}>
-      {icon}
-      <span className="qms-text-sm font-medium">{title}</span>
-    </div>
-    {items.length === 0 ? (
+const SectionHeader: React.FC<{ icon: React.ReactNode; title: string }> = ({ icon, title }) => (
+  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, color: 'var(--gray-600)' }}>
+    {icon}
+    <span className="qms-text-sm font-medium">{title}</span>
+  </div>
+);
+
+// A contractor's testing labs — a simple list (labs have no nested data).
+const LabList: React.FC<{ labs: LabResponse[] }> = ({ labs }) => (
+  <div style={{ flex: 1, minWidth: 240 }}>
+    <SectionHeader icon={<FlaskConical size={14} />} title="Testing labs" />
+    {labs.length === 0 ? (
       <p className="qms-text-sm text-muted" style={{ margin: 0 }}>None yet.</p>
     ) : (
       <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
-        {items.map((it) => (
-          <li key={it.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
-            <span>{it.name}</span>
-            <Badge variant={CONF_VARIANT[it.status]}>{CONF_LABEL[it.status]}</Badge>
+        {labs.map((l) => (
+          <li key={l.lab_id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+            <span>{l.lab_name}</span>
+            <Badge variant={CONF_VARIANT[l.status]}>{CONF_LABEL[l.status]}</Badge>
           </li>
         ))}
       </ul>
     )}
   </div>
 );
+
+// A contractor's RMC suppliers — each expands to reveal its mix designs.
+const SupplierList: React.FC<{
+  suppliers: SupplierResponse[];
+  mixDesigns: MixDesignResponse[];
+}> = ({ suppliers, mixDesigns }) => {
+  const [open, setOpen] = useState<number | null>(null);
+  return (
+    <div style={{ flex: 1, minWidth: 280 }}>
+      <SectionHeader icon={<Factory size={14} />} title="RMC suppliers" />
+      {suppliers.length === 0 ? (
+        <p className="qms-text-sm text-muted" style={{ margin: 0 }}>None yet.</p>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {suppliers.map((s) => {
+            const mds = mixDesigns.filter((m) => m.supplier_id === s.supplier_id);
+            const isOpen = open === s.supplier_id;
+            return (
+              <div key={s.supplier_id} style={{ border: '1px solid var(--gray-200)', borderRadius: 8, overflow: 'hidden' }}>
+                <button
+                  type="button"
+                  onClick={() => setOpen(isOpen ? null : s.supplier_id)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 8, width: '100%',
+                    padding: '8px 10px', background: 'none', border: 'none', cursor: 'pointer',
+                    font: 'inherit', textAlign: 'left',
+                  }}
+                >
+                  <ChevronRight size={14} style={{ flexShrink: 0, transform: isOpen ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }} />
+                  <span className="font-medium" style={{ fontSize: 13 }}>{s.supplier_name}</span>
+                  <Badge variant={CONF_VARIANT[s.status]}>{CONF_LABEL[s.status]}</Badge>
+                  <span className="qms-text-sm text-muted" style={{ marginLeft: 'auto' }}>
+                    {mds.length} mix design{mds.length === 1 ? '' : 's'}
+                  </span>
+                </button>
+                {isOpen && (
+                  <div style={{ padding: '0 12px 10px 30px' }}>
+                    {mds.length === 0 ? (
+                      <p className="qms-text-sm text-muted" style={{ margin: 0 }}>No mix designs yet.</p>
+                    ) : (
+                      <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        {mds.map((m) => (
+                          <li key={m.mix_design_id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+                            <span className="font-medium">{m.grade_name ?? '—'}</span>
+                            <span className="text-muted">W/C {m.wc_ratio ?? '—'}</span>
+                            {m.strength_28day_mpa != null && (
+                              <span className="text-muted">{m.strength_28day_mpa} MPa</span>
+                            )}
+                            {m.approval_status && (
+                              <Badge variant={APPROVAL_VARIANT[m.approval_status]}>{m.approval_status.replace('_', ' ')}</Badge>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
 
 export const ProjectContractors: React.FC = () => {
   const { project } = useProject();
@@ -66,6 +137,7 @@ export const ProjectContractors: React.FC = () => {
   const [towers, setTowers] = useState<TowerResponse[]>([]);
   const [suppliers, setSuppliers] = useState<SupplierResponse[]>([]);
   const [labs, setLabs] = useState<LabResponse[]>([]);
+  const [mixDesigns, setMixDesigns] = useState<MixDesignResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [orgName, setOrgName] = useState('');
   const [email, setEmail] = useState('');
@@ -78,16 +150,18 @@ export const ProjectContractors: React.FC = () => {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [pcs, tw, sup, lb] = await Promise.all([
+      const [pcs, tw, sup, lb, md] = await Promise.all([
         projectsApi.contractors(pid),
         projectsApi.towers(pid),
         suppliersApi.list(pid),
         labsApi.list(pid),
+        mixDesignsApi.list(pid),
       ]);
       setRows(pcs);
       setTowers(tw);
       setSuppliers(sup);
       setLabs(lb);
+      setMixDesigns(md);
     } catch (err) {
       setError(getApiErrorMessage(err, 'Unable to load contractors.'));
     } finally {
@@ -150,34 +224,35 @@ export const ProjectContractors: React.FC = () => {
               {towers.length === 0 ? (
                 <p className="qms-text-sm text-muted" style={{ margin: 0 }}>No towers on this project yet — the contractor will cover the entire project.</p>
               ) : (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
                   {towers.map((t) => {
                     const takenByName = wholeProjectBy ?? takenBy[t.tower_name];
                     const isTaken = !!takenByName;
-                    const checked = towerIds.includes(t.tower_id);
+                    // Taken towers show as a dimmed, ticked chip (allotted elsewhere).
+                    const checked = isTaken || towerIds.includes(t.tower_id);
                     return (
                       <label
                         key={t.tower_id}
                         title={isTaken ? `Already assigned to ${takenByName}` : undefined}
                         style={{
-                          display: 'inline-flex', alignItems: 'center', gap: 6,
+                          display: 'inline-flex', alignItems: 'center', gap: 8,
                           cursor: isTaken ? 'not-allowed' : 'pointer',
-                          padding: '6px 12px', borderRadius: 8, fontSize: 13,
+                          padding: '10px 16px', borderRadius: 10, fontSize: 14,
+                          opacity: isTaken ? 0.55 : 1,
                           border: `1px solid ${checked ? 'var(--blue-500, #3B82F6)' : 'var(--gray-200)'}`,
-                          background: isTaken ? 'var(--gray-100)' : checked ? 'var(--blue-50, #EFF6FF)' : 'var(--gray-50, #F9FAFB)',
-                          color: isTaken ? 'var(--gray-400)' : checked ? 'var(--blue-700, #1D4ED8)' : 'var(--gray-700)',
-                          textDecoration: isTaken ? 'line-through' : 'none',
+                          background: checked ? 'var(--blue-50, #EFF6FF)' : 'var(--gray-50, #F9FAFB)',
+                          color: checked ? 'var(--blue-700, #1D4ED8)' : 'var(--gray-700)',
                         }}
                       >
                         <input type="checkbox" checked={checked} disabled={isTaken} onChange={() => toggleTower(t.tower_id)} />
-                        {t.tower_name}{isTaken ? ' · taken' : ''}
+                        {t.tower_name}
                       </label>
                     );
                   })}
                 </div>
               )}
               <p className="qms-text-sm text-muted" style={{ marginTop: 6, marginBottom: 0 }}>
-                Leave all unchecked for the entire project.
+                Leave all unchecked for the entire project. Dimmed towers are already assigned to another contractor.
               </p>
             </div>
             <div style={{ gridColumn: 'span 2' }}>
@@ -200,12 +275,8 @@ export const ProjectContractors: React.FC = () => {
             <p className="text-muted qms-text-sm">No contractors yet.</p>
           ) : (
             rows.map((c) => {
-              const theirSuppliers = suppliers
-                .filter((s) => s.contractor_org_id === c.contractor_org_id)
-                .map((s) => ({ id: s.supplier_id, name: s.supplier_name, status: s.status }));
-              const theirLabs = labs
-                .filter((l) => l.contractor_org_id === c.contractor_org_id)
-                .map((l) => ({ id: l.lab_id, name: l.lab_name, status: l.status }));
+              const theirSuppliers = suppliers.filter((s) => s.contractor_org_id === c.contractor_org_id);
+              const theirLabs = labs.filter((l) => l.contractor_org_id === c.contractor_org_id);
               return (
                 <Card key={c.pc_id}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
@@ -220,8 +291,8 @@ export const ProjectContractors: React.FC = () => {
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', marginTop: 14 }}>
-                    <HiredList icon={<Factory size={14} />} title="RMC suppliers" items={theirSuppliers} />
-                    <HiredList icon={<FlaskConical size={14} />} title="Testing labs" items={theirLabs} />
+                    <SupplierList suppliers={theirSuppliers} mixDesigns={mixDesigns} />
+                    <LabList labs={theirLabs} />
                   </div>
                 </Card>
               );
