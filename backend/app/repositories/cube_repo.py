@@ -7,7 +7,7 @@ sample/pour, so the project-scoped queries here join through that chain.
 
 from sqlalchemy import select
 
-from app.models.quality import NCR, CubeTest
+from app.models.quality import NCR, CorrectiveAction, CubeTest, Penalty
 from app.models.transaction import CubeSample, Pour
 from app.repositories.base_repo import BaseRepository
 
@@ -82,3 +82,40 @@ class NCRRepository(BaseRepository[NCR]):
         )
         res = await self.session.execute(q)
         return list(res.scalars().all())
+
+
+class CorrectiveActionRepository(BaseRepository[CorrectiveAction]):
+    model = CorrectiveAction
+
+    async def list_for_ncr(self, ncr_id: int) -> list[CorrectiveAction]:
+        return await self.list_by(
+            CorrectiveAction.ncr_id == ncr_id,
+            order_by=CorrectiveAction.created_at.asc(),
+        )
+
+    async def list_for_ncrs(self, ncr_ids: list[int]) -> list[CorrectiveAction]:
+        if not ncr_ids:
+            return []
+        return await self.list_by(CorrectiveAction.ncr_id.in_(ncr_ids))
+
+    async def get_in_ncr(
+        self, action_id: int, ncr_id: int
+    ) -> CorrectiveAction | None:
+        return await self.get_by(
+            CorrectiveAction.action_id == action_id,
+            CorrectiveAction.ncr_id == ncr_id,
+        )
+
+
+class PenaltyRepository(BaseRepository[Penalty]):
+    model = Penalty
+
+    async def list_for_ncr(self, ncr_id: int) -> list[Penalty]:
+        return await self.list_by(
+            Penalty.ncr_id == ncr_id, order_by=Penalty.applied_at.asc()
+        )
+
+    async def list_for_ncrs(self, ncr_ids: list[int]) -> list[Penalty]:
+        if not ncr_ids:
+            return []
+        return await self.list_by(Penalty.ncr_id.in_(ncr_ids))

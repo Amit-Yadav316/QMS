@@ -15,7 +15,7 @@ from datetime import date, datetime
 
 from pydantic import BaseModel
 
-from app.models.quality import NCRStatus, ResultStatus
+from app.models.quality import ActionStatus, NCRStatus, PenaltyType, ResultStatus
 
 # ── Cube samples ─────────────────────────────────────────────────────────────
 
@@ -88,7 +88,68 @@ class CubeSampleResponse(BaseModel):
     tests: list[CubeTestResponse] = []
 
 
-# ── NCRs (read-only here; full lifecycle in Phase 5) ─────────────────────────
+# ── Corrective actions (Phase 5) ─────────────────────────────────────────────
+
+
+class CorrectiveActionCreate(BaseModel):
+    action_description: str
+    assigned_to: int | None = None
+    due_date: date | None = None
+
+
+class CorrectiveActionUpdate(BaseModel):
+    """All fields optional — typically used to advance ``status`` as the action
+    is worked, but description/owner/due-date can be amended too."""
+
+    action_description: str | None = None
+    assigned_to: int | None = None
+    due_date: date | None = None
+    status: ActionStatus | None = None
+
+
+class CorrectiveActionResponse(BaseModel):
+    action_id: int
+    ncr_id: int
+    action_description: str
+    assigned_to: int | None = None
+    assigned_to_name: str | None = None
+    due_date: date | None = None
+    status: ActionStatus
+    created_at: datetime
+
+
+# ── Penalties (Phase 5) ──────────────────────────────────────────────────────
+
+
+class PenaltyCreate(BaseModel):
+    penalty_type: PenaltyType
+    amount: float | None = None
+    description: str | None = None
+
+
+class PenaltyResponse(BaseModel):
+    penalty_id: int
+    ncr_id: int
+    penalty_type: PenaltyType
+    amount: float | None = None
+    description: str | None = None
+    applied_by: int | None = None
+    applied_by_name: str | None = None
+    applied_at: datetime
+
+
+# ── NCRs ─────────────────────────────────────────────────────────────────────
+
+
+class NCRUpdate(BaseModel):
+    """Advance an NCR through its lifecycle and/or record its root cause.
+
+    ``status`` follows OPEN → UNDER_REVIEW → CLOSED (CLOSED can be reopened to
+    UNDER_REVIEW). Closing requires a root cause and all corrective actions
+    completed."""
+
+    status: NCRStatus | None = None
+    root_cause: str | None = None
 
 
 class NCRResponse(BaseModel):
@@ -98,6 +159,8 @@ class NCRResponse(BaseModel):
     pour_id: int
     status: NCRStatus
     root_cause: str | None = None
+    raised_by: int | None = None
+    raised_by_name: str | None = None
     raised_at: datetime
     closed_at: datetime | None = None
     # Denormalised context for the NCR list.
@@ -110,3 +173,14 @@ class NCRResponse(BaseModel):
     tower_name: str | None = None
     floor_label: str | None = None
     component_type: str | None = None
+    # Lifecycle roll-ups for the list view (details live on NCRDetailResponse).
+    corrective_action_count: int = 0
+    open_action_count: int = 0
+    penalty_count: int = 0
+
+
+class NCRDetailResponse(NCRResponse):
+    """A single NCR with its corrective actions and penalties expanded."""
+
+    corrective_actions: list[CorrectiveActionResponse] = []
+    penalties: list[PenaltyResponse] = []

@@ -41,7 +41,6 @@ from app.schemas.quality import (
     CubeSampleResponse,
     CubeTestCreate,
     CubeTestResponse,
-    NCRResponse,
 )
 
 # A failing test grades to one of these — the engine's non-passing outcomes.
@@ -134,18 +133,6 @@ class CubeService:
             ncr = await self._raise_ncr(test, pour, user)
 
         return await self._test_response(test, ncr=ncr)
-
-    # ── NCRs (read-only) ─────────────────────────────────────────────────────
-
-    async def list_ncrs_for_project(self, project: Project) -> list[NCRResponse]:
-        ncrs = await self.ncrs.list_for_project(project.project_id)
-        return [await self._ncr_response(n) for n in ncrs]
-
-    async def get_ncr(self, project: Project, ncr_id: int) -> NCRResponse:
-        ncr = await self.ncrs.get_in_project(ncr_id, project.project_id)
-        if not ncr:
-            raise NotFoundError("NCR")
-        return await self._ncr_response(ncr)
 
     # ── Internals ────────────────────────────────────────────────────────────
 
@@ -257,32 +244,4 @@ class CubeService:
             ncr_id=ncr.ncr_id if ncr else None,
             ncr_number=ncr.ncr_number if ncr else None,
             created_at=test.created_at,
-        )
-
-    async def _ncr_response(self, ncr: NCR) -> NCRResponse:
-        test = await self.session.get(CubeTest, ncr.test_id)
-        sample = await self.session.get(CubeSample, test.sample_id) if test else None
-        pour = await self.session.get(Pour, ncr.pour_id)
-        tower = await self.session.get(Tower, pour.tower_id) if pour else None
-        floor = await self.session.get(Floor, pour.floor_id) if pour else None
-        component = await self.session.get(Component, pour.component_id) if pour else None
-        grade = await self.session.get(Grade, pour.grade_id) if pour else None
-        return NCRResponse(
-            ncr_id=ncr.ncr_id,
-            ncr_number=ncr.ncr_number,
-            test_id=ncr.test_id,
-            pour_id=ncr.pour_id,
-            status=ncr.status,
-            root_cause=ncr.root_cause,
-            raised_at=ncr.raised_at,
-            closed_at=ncr.closed_at,
-            result_status=test.result_status if test else None,
-            observed_strength_mpa=test.observed_strength_mpa if test else None,
-            required_strength_mpa=test.required_strength_mpa if test else None,
-            test_age_days=test.test_age_days if test else None,
-            sample_reference=sample.sample_reference if sample else None,
-            grade_name=grade.grade_name if grade else None,
-            tower_name=tower.tower_name if tower else None,
-            floor_label=floor.floor_label if floor else None,
-            component_type=component.component_type.value if component else None,
         )

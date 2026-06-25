@@ -12,6 +12,7 @@ from app.routers import (
     floors,
     labs,
     mix_designs,
+    ncrs,
     pours,
     projects,
     suppliers,
@@ -59,9 +60,7 @@ def create_app() -> FastAPI:
     app.include_router(dispatches.router, prefix=settings.API_V1_PREFIX)
     app.include_router(dispatch_token.router, prefix=settings.API_V1_PREFIX)
     app.include_router(cube_tests.router, prefix=settings.API_V1_PREFIX)
-
-    # Add remaining routers here as we build them:
-    # app.include_router(ncr.router, prefix=settings.API_V1_PREFIX)
+    app.include_router(ncrs.router, prefix=settings.API_V1_PREFIX)
 
     return app
 

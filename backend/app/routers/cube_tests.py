@@ -1,9 +1,9 @@
-"""cube_tests.py router — Phase 4 cube samples, tests, and auto-NCRs.
+"""cube_tests.py router — Phase 4 cube samples and strength tests.
 
 Project-scoped under /projects/{id}. The Quality Engineer casts cube samples
 from a pour and records strength tests against them; the quality engine grades
-each test and auto-raises an NCR on failure. Listing (samples, tests, NCRs) is
-open to anyone who can view the project.
+each test and auto-raises an NCR on failure. Listing (samples, tests) is open to
+anyone who can view the project. The NCR lifecycle lives in ncrs.py (Phase 5).
 """
 
 from fastapi import APIRouter, Depends
@@ -20,7 +20,6 @@ from app.schemas.quality import (
     CubeSampleResponse,
     CubeTestCreate,
     CubeTestResponse,
-    NCRResponse,
 )
 from app.services.cube_service import CubeService
 
@@ -90,23 +89,3 @@ async def record_test(
 ):
     _ensure_quality_engineer(current_user)
     return await CubeService(db).record_test(project, sample_id, data, current_user)
-
-
-# ── NCRs (read-only; lifecycle in Phase 5) ───────────────────────────────────
-
-
-@router.get("/{project_id}/ncrs", response_model=list[NCRResponse])
-async def list_ncrs(
-    project: Project = Depends(require_project),
-    db: AsyncSession = Depends(get_db),
-):
-    return await CubeService(db).list_ncrs_for_project(project)
-
-
-@router.get("/{project_id}/ncrs/{ncr_id}", response_model=NCRResponse)
-async def get_ncr(
-    ncr_id: int,
-    project: Project = Depends(require_project),
-    db: AsyncSession = Depends(get_db),
-):
-    return await CubeService(db).get_ncr(project, ncr_id)
