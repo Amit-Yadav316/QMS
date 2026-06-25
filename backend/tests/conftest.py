@@ -43,8 +43,28 @@ _TRUNCATE_SQL = "TRUNCATE TABLE {} RESTART IDENTITY CASCADE".format(
 )
 
 
+async def _terminate_stale_connections(admin: asyncpg.Connection) -> None:
+    """Kill any leftover connections to the test database.
+
+    A pytest run interrupted mid-request (Ctrl-C, a killed process, or a CI/tool
+    timeout) leaves its connection ``idle in transaction``, still holding table
+    locks. The next run's ``DROP SCHEMA`` / ``TRUNCATE`` then blocks on those
+    locks indefinitely — the suite appears to "hang for 30 minutes". Forcibly
+    terminating any straggler before we touch the schema makes bootstrap
+    self-healing instead."""
+    await admin.execute(
+        """
+        SELECT pg_terminate_backend(pid)
+        FROM pg_stat_activity
+        WHERE datname = $1 AND pid <> pg_backend_pid()
+        """,
+        TEST_DB_NAME,
+    )
+
+
 async def _bootstrap_database() -> None:
-    # 1. Create the test database if it does not exist.
+    # 1. Create the test database if it does not exist, and clear any stale
+    #    connections left behind by a previously-interrupted run.
     admin = await asyncpg.connect(_ADMIN_DSN)
     try:
         exists = await admin.fetchval(
@@ -52,6 +72,15 @@ async def _bootstrap_database() -> None:
         )
         if not exists:
             await admin.execute(f'CREATE DATABASE "{TEST_DB_NAME}"')
+        else:
+            await _terminate_stale_connections(admin)
+        # Belt-and-braces: auto-abort any connection that sits idle in a
+        # transaction (so a future interrupted run self-clears even before the
+        # next bootstrap runs, rather than wedging the database).
+        await admin.execute(
+            f'ALTER DATABASE "{TEST_DB_NAME}" '
+            "SET idle_in_transaction_session_timeout = '60s'"
+        )
     finally:
         await admin.close()
 
