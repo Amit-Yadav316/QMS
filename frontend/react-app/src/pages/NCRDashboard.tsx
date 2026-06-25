@@ -312,7 +312,7 @@ const NCRDetailPanel: React.FC<PanelProps> = ({ pid, ncrId, isQE, onChanged }) =
       {/* Root cause */}
       <div>
         <h4 className="qms-section-heading" style={{ marginBottom: 6 }}>Root cause</h4>
-        {isQE ? (
+        {isQE && !isClosed ? (
           <>
             <textarea
               value={rootCause}
