@@ -1,0 +1,30 @@
+# Virtual envs & caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Secrets — provide via runtime env, never bake into the image
+.env
+.env.*
+!.env.sample
+
+# VCS & project meta
+.git/
+.gitignore
+.dockerignore
+
+# Tests & docs (not needed in the runtime image)
+tests/
+*.md
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

@@ -3,20 +3,30 @@ auth.py router — all /auth/* endpoints
 """
 
 from fastapi import APIRouter, Depends
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
-from app.database.session import get_db
-from app.core.dependencies import get_current_user, require_role
-from app.core.security import decode_token
+from app.core.dependencies import get_current_user
 from app.core.exceptions import InvalidTokenError, PermissionDeniedError
+from app.core.security import decode_token
+from app.database.session import get_db
 from app.models.auth import User, UserRole
 from app.schemas.auth import (
-    OrgRegisterRequest, ContractorRegisterRequest,
-    LoginRequest, RefreshRequest, InviteRequest,
-    AcceptInvitationRequest, TokenResponse,
-    AccessTokenResponse, OrgResponse,
-    InvitationResponse, MeResponse,
+    AcceptInvitationRequest,
+    AccessTokenResponse,
+    AvatarUpdate,
+    InvitationResponse,
+    InviteRequest,
+    LoginRequest,
+    MeResponse,
+    OrgRegisterRequest,
+    OtpChallengeResponse,
+    RefreshRequest,
+    ResendOtpRequest,
+    TeamMemberResponse,
+    TokenResponse,
+    UserResponse,
+    VerifyOtpRequest,
 )
 from app.services.auth_service import AuthService
 
@@ -28,12 +38,15 @@ bearer_scheme = HTTPBearer()
 # Public endpoints
 # ---------------------------------------------------------------------------
 
-@router.post("/register", response_model=TokenResponse, status_code=201)
+@router.post("/register", response_model=OtpChallengeResponse, status_code=201)
 async def register_client(
     data: OrgRegisterRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    """Client self-registers their company and first admin account."""
+    """
+    Client self-registers their company and first admin account. Returns an
+    OTP challenge — the account activates only after /auth/verify-otp.
+    """
     service = AuthService(db)
     return await service.register_client(data)
 
@@ -58,17 +71,38 @@ async def refresh_token(
     return await service.refresh_access_token(data.refresh_token)
 
 
-@router.post("/accept-invitation", response_model=TokenResponse, status_code=201)
+@router.post("/accept-invitation", response_model=OtpChallengeResponse, status_code=201)
 async def accept_invitation(
     data: AcceptInvitationRequest,
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Accept email invitation and create your account.
-    Token comes from the invitation email link.
+    Accept email invitation and create your account. Token comes from the
+    invitation email link. Returns an OTP challenge — the account activates
+    only after /auth/verify-otp.
     """
     service = AuthService(db)
     return await service.accept_invitation(data)
+
+
+@router.post("/verify-otp", response_model=TokenResponse)
+async def verify_otp(
+    data: VerifyOtpRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Verify the emailed code, activate the account, and return tokens."""
+    service = AuthService(db)
+    return await service.verify_otp(data)
+
+
+@router.post("/resend-otp", response_model=OtpChallengeResponse)
+async def resend_otp(
+    data: ResendOtpRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Re-send a verification code to a not-yet-activated account."""
+    service = AuthService(db)
+    return await service.resend_otp(data)
 
 
 # ---------------------------------------------------------------------------
@@ -102,35 +136,51 @@ async def get_me(
     return await service.get_me(current_user)
 
 
-# ---------------------------------------------------------------------------
-# CLIENT_ADMIN only
-# ---------------------------------------------------------------------------
-
-@router.post(
-    "/register-contractor",
-    response_model=OrgResponse,
-    status_code=201,
-    dependencies=[Depends(require_role(UserRole.CLIENT_ADMIN))],
-)
-async def register_contractor(
-    data: ContractorRegisterRequest,
+@router.get("/team", response_model=list[TeamMemberResponse])
+async def get_team(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    CLIENT_ADMIN registers a contractor organisation.
-    Automatically sends an activation email to the contractor's contact email.
-    Contractor activates as CONTRACTOR_ADMIN, then invites their own PMs.
-    """
+    """Org directory: active/unverified users + pending invitations."""
     service = AuthService(db)
-    return await service.register_contractor(
-        data=data,
-        client_user=current_user,
-    )
+    return await service.get_team(current_user)
+
+
+@router.put("/me/avatar", response_model=UserResponse)
+async def update_my_avatar(
+    data: AvatarUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Set or clear the current user's profile picture (data: URL)."""
+    return await AuthService(db).update_avatar(current_user, data.avatar_url)
+
+
+@router.post("/users/{user_id}/deactivate", response_model=UserResponse)
+async def deactivate_user(
+    user_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Org admin offboards a member of their org — revokes all access."""
+    return await AuthService(db).set_member_offboarded(current_user, user_id, True)
+
+
+@router.post("/users/{user_id}/reactivate", response_model=UserResponse)
+async def reactivate_user(
+    user_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Org admin restores a previously deactivated member."""
+    return await AuthService(db).set_member_offboarded(current_user, user_id, False)
 
 
 # ---------------------------------------------------------------------------
-# Invite — available to CLIENT_ADMIN, CONTRACTOR_ADMIN, PROJECT_MANAGER
+# Invite — available to CLIENT_ADMIN, CONTRACTOR_ADMIN, CONTRACTOR_USER
+#
+# Bringing a contractor onto a project is now project-scoped — see
+# POST /projects/{id}/contractors (routers/projects.py), not an /auth endpoint.
 # ---------------------------------------------------------------------------
 
 @router.post("/invite", response_model=InvitationResponse, status_code=201)
@@ -143,9 +193,13 @@ async def invite_user(
     Invite a user to join your organisation.
 
     Who can invite whom:
-      CLIENT_ADMIN      → invites CONTRACTOR_ADMIN
-      CONTRACTOR_ADMIN  → invites PROJECT_MANAGER
-      PROJECT_MANAGER   → invites QUALITY_ENGINEER, SUPERVISOR
+      CLIENT_ADMIN      → invites CLIENT_USER
+      CONTRACTOR_ADMIN  → invites CONTRACTOR_USER, PROJECT_MANAGER,
+                          SUPERVISOR, QUALITY_ENGINEER
+      CONTRACTOR_USER   → invites PROJECT_MANAGER, SUPERVISOR, QUALITY_ENGINEER
+
+    (Bringing a contractor org onto a project is a separate, project-scoped
+    flow — see POST /projects/{id}/contractors.)
 
     Invited user receives an email with a registration link.
     """
@@ -161,20 +215,29 @@ def _validate_invite_permission(inviting_user: User, target_role: UserRole) -> N
     """
     Enforces who can invite whom.
 
-    CLIENT_ADMIN      → CONTRACTOR_ADMIN only
-    CONTRACTOR_ADMIN  → PROJECT_MANAGER only
-    PROJECT_MANAGER   → QUALITY_ENGINEER, SUPERVISOR
+    CLIENT_ADMIN      → CLIENT_USER
+    CONTRACTOR_ADMIN  → CONTRACTOR_USER, PROJECT_MANAGER, SUPERVISOR,
+                        QUALITY_ENGINEER
+    CONTRACTOR_USER   → PROJECT_MANAGER, SUPERVISOR, QUALITY_ENGINEER
+
+    PROJECT_MANAGER / QUALITY_ENGINEER / SUPERVISOR are leaf roles and cannot
+    invite anyone. Bringing a contractor onto a project is project-scoped
+    (POST /projects/{id}/contractors), not this endpoint.
     """
     allowed_map = {
         UserRole.CLIENT_ADMIN: [
-            UserRole.CONTRACTOR_ADMIN,
+            UserRole.CLIENT_USER,
         ],
         UserRole.CONTRACTOR_ADMIN: [
+            UserRole.CONTRACTOR_USER,
             UserRole.PROJECT_MANAGER,
-        ],
-        UserRole.PROJECT_MANAGER: [
-            UserRole.QUALITY_ENGINEER,
             UserRole.SUPERVISOR,
+            UserRole.QUALITY_ENGINEER,
+        ],
+        UserRole.CONTRACTOR_USER: [
+            UserRole.PROJECT_MANAGER,
+            UserRole.SUPERVISOR,
+            UserRole.QUALITY_ENGINEER,
         ],
     }
 

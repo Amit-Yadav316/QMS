@@ -4,9 +4,8 @@ import {
   Truck, 
   QrCode, 
   FileText, 
-  Box, 
-  TestTube, 
-  ShieldCheck, 
+  Box,
+  TestTube,
   LayoutDashboard,
   CheckCircle,
   Bell

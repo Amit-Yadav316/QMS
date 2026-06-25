@@ -17,9 +17,9 @@ JWT payload structure:
   jti   → unique token ID (for blacklisting)
 """
 
+import secrets
 import uuid
-from datetime import datetime, timedelta, timezone
-from typing import Optional
+from datetime import UTC, datetime, timedelta
 
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -74,7 +74,7 @@ def _create_token(
     used to blacklist the token on logout.
     """
     jti = str(uuid.uuid4())
-    expire = datetime.now(timezone.utc) + expire_delta
+    expire = datetime.now(UTC) + expire_delta
 
     payload = {
         "sub": str(user_id),
@@ -135,7 +135,7 @@ class TokenData:
         self.token_type = token_type
 
 
-def decode_token(token: str) -> Optional[TokenData]:
+def decode_token(token: str) -> TokenData | None:
     """
     Decodes and validates a JWT.
     Returns TokenData if valid, None if expired or invalid.
@@ -177,3 +177,12 @@ def create_invitation_token() -> str:
     Stored in OrgInvitation.token — not a JWT.
     """
     return str(uuid.uuid4())
+
+
+# ---------------------------------------------------------------------------
+# Email OTP (numeric verification code)
+# ---------------------------------------------------------------------------
+
+def generate_otp(length: int = 6) -> str:
+    """Cryptographically-random numeric code for email verification."""
+    return "".join(secrets.choice("0123456789") for _ in range(length))

@@ -4,14 +4,25 @@ Schema: quality
 """
 
 import enum
-from datetime import datetime, date
+from datetime import date, datetime
+
 from sqlalchemy import (
-    BigInteger, String, Boolean, DateTime, Date, Text,
-    Numeric, Integer, ForeignKey, Enum as SAEnum,
-    Index, func
+    BigInteger,
+    Boolean,
+    Date,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    func,
 )
+from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from app.database.base import Base
 
 

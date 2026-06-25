@@ -1,331 +1,183 @@
-# Construction Quality Management System — Backend
+# Construction QMS — Backend
 
-## Tech Stack
-- **Python 3.11.9**
-- **FastAPI 0.111.0** — async web framework
-- **SQLAlchemy 2.0.30** — async ORM
-- **asyncpg** — PostgreSQL async driver
-- **Alembic** — database migrations
-- **PostgreSQL 16** — database (port 5433)
-- **passlib + bcrypt 4.0.1** — password hashing
-- **python-jose** — JWT tokens
-- **fastapi-mail + Jinja2** — email sending
-- **pytest + pytest-asyncio** — testing
+FastAPI + async SQLAlchemy backend for the Construction Quality Management System.
+Dependencies and the virtual environment are managed with [**uv**](https://docs.astral.sh/uv/).
 
----
+## Tech stack
 
-## Project Structure
+| | |
+|---|---|
+| Language | Python **3.11** (deps lack 3.13 wheels; pinned `>=3.11,<3.13`) |
+| Web | FastAPI 0.111 · Uvicorn |
+| ORM | SQLAlchemy 2.0 (async) · asyncpg |
+| Migrations | Alembic (multi-schema, async) |
+| DB | PostgreSQL 16 on **port 5433**, database `construction_db` |
+| Auth | JWT (python-jose) · passlib + bcrypt |
+| Email | fastapi-mail + Jinja2 |
+| Tooling | uv · pytest + pytest-asyncio · ruff · Docker |
+
+## Project structure
 
 ```
 backend/
 ├── app/
-│   ├── core/
-│   │   ├── security.py        # JWT create/verify, bcrypt hashing
-│   │   ├── dependencies.py    # get_current_user, role guards
-│   │   ├── exceptions.py      # HTTP error handlers
-│   │   └── email.py           # SMTP email sender
-│   ├── models/
-│   │   ├── auth.py            # Organisation, User, ProjectTeam,
-│   │   │                      # OrgInvitation, TokenBlacklist
-│   │   ├── master.py          # Project, Tower, Floor, Grade,
-│   │   │                      # Supplier, MixDesign, TestingLab,
-│   │   │                      # ProjectContractor
-│   │   ├── transaction.py     # Pour, RMCDispatch, TruckDispatch,
-│   │   │                      # PourDispatchLink, CubeSample
-│   │   ├── quality.py         # CubeTest, NCR, Penalty,
-│   │   │                      # CorrectiveAction, AISuggestion
-│   │   └── audit.py           # AuditLog, IngestionLog, Embedding
-│   ├── schemas/
-│   │   └── auth.py            # Pydantic request/response models
-│   ├── repositories/
-│   │   └── auth_repo.py       # DB queries for auth
-│   ├── services/
-│   │   └── auth_service.py    # Auth business logic
-│   ├── routers/
-│   │   └── auth.py            # /auth/* endpoints
-│   ├── template/
-│   │   └── email/
-│   │       ├── invitation.html
-│   │       ├── truck_dispatch.html
-│   │       ├── truck_result.html
-│   │       └── lab_reminder.html
-│   ├── database/
-│   │   ├── base.py            # DeclarativeBase
-│   │   ├── engine.py          # async engine
-│   │   └── session.py         # get_db() dependency
-│   ├── config.py              # pydantic-settings, reads .env
-│   └── main.py                # FastAPI app, routers registered
-├── alembic/
-│   ├── env.py                 # multi-schema aware async env
-│   └── versions/              # migration files
+│   ├── main.py              # FastAPI app, router registration, CORS
+│   ├── config.py            # pydantic-settings, reads .env
+│   ├── core/                # security (JWT/bcrypt), dependencies, exceptions, email
+│   ├── database/            # DeclarativeBase, async engine, get_db() session
+│   ├── models/              # auth, master, transaction, quality, audit (5 schemas)
+│   ├── schemas/             # Pydantic request/response models (auth, master)
+│   ├── repositories/        # DB query layer (base_repo + per-resource repos)
+│   ├── services/            # business logic (auth, project, supplier, lab)
+│   ├── routers/             # /auth, /projects, /suppliers, /labs
+│   └── templates/email/     # invitation, truck_dispatch, truck_result, lab_reminder
+├── alembic/                 # env.py (creates all 5 schemas) + versions/
 ├── tests/
-│   ├── test_db_connection.py  # Phase 1 exit condition
-│   └── test_models.py         # Phase 2 exit condition
+│   ├── conftest.py          # test-DB bootstrap, fixtures, email stub
+│   ├── helpers.py
+│   ├── unit/                # security, invite-permission matrix
+│   └── integration/         # auth flow, client→project→contractor E2E, schema coverage
+├── pyproject.toml           # deps, dev group, build, pytest + ruff config
+├── uv.lock                  # pinned, reproducible dependency graph (committed)
+├── .python-version          # 3.11
 ├── alembic.ini
-├── pytest.ini
-├── requirements.txt
-└── .env                       # never commit this
+├── Dockerfile · .dockerignore
+└── .env.sample
 ```
 
----
+### Database schemas
 
-## Database Schemas
-
-Five PostgreSQL schemas:
-
-| Schema | Purpose |
-|--------|---------|
-| `auth` | Organisations, users, invitations, token blacklist |
-| `master` | Projects, towers, floors, grades, suppliers, mix designs, labs |
-| `transaction` | Pours, dispatches, truck verification, cube samples |
-| `quality` | Cube tests, NCRs, penalties, corrective actions, AI suggestions |
-| `audit` | Audit logs, ingestion logs, embeddings |
-
----
-
-## User Roles & Hierarchy
-
-```
-CLIENT_ADMIN
-  └── registers CONTRACTOR org → sends activation email
-        │
-        CONTRACTOR_ADMIN (activates via email)
-          └── invites PROJECT_MANAGER
-                │
-                PROJECT_MANAGER
-                  └── invites QUALITY_ENGINEER, SUPERVISOR
-```
-
-| Role | Can Do |
-|------|--------|
-| CLIENT_ADMIN | Create projects, register contractors, assign contractors to towers |
-| CONTRACTOR_ADMIN | Invite PMs, add suppliers/labs, upload mix designs |
-| PROJECT_MANAGER | Invite QE/Supervisor, add towers/floors, approve mix designs |
-| QUALITY_ENGINEER | Create pours, dispatches, cube tests, NCRs |
-| SUPERVISOR | Create pours, mark trucks arrived/accepted/rejected |
-
----
+| Schema | Contents |
+|--------|----------|
+| `auth` | organisations, users, project_team, org_invitations, token_blacklist |
+| `master` | projects, towers, floors, components, grades, suppliers, mix_designs, testing_labs |
+| `transaction` | pours, dispatches, truck verification, cube_samples |
+| `quality` | cube_tests, ncrs, penalties, corrective_actions, ai_suggestions |
+| `audit` | audit_logs, ingestion_logs, embeddings |
 
 ## Setup
 
 ### Prerequisites
-- Python 3.11.9
-- PostgreSQL 16 (running on port 5433)
-- Gmail account with App Password enabled
+- [uv](https://docs.astral.sh/uv/getting-started/installation/)
+- PostgreSQL 16 running on port 5433 (database `construction_db`)
 
-### 1. Create virtual environment
+### 1. Install dependencies
 ```bash
-py -3.11 -m venv .venv
-.venv\Scripts\activate        # Windows
-python --version               # must show 3.11.9
+cd backend
+uv sync          # creates .venv (Python 3.11) and installs locked deps + dev tools
 ```
+`uv sync` editable-installs the `app` package, so `app.*` imports resolve everywhere —
+no `PYTHONPATH` juggling needed.
 
-### 2. Install dependencies
-```bash
-pip install -r requirements.txt
-```
-
-### 3. Configure environment
+### 2. Configure environment
 ```bash
 cp .env.sample .env
-# Fill in all values in .env
+# fill in DATABASE_URL, SECRET_KEY, MAIL_* (see .env.sample)
 ```
+Generate a secret key: `uv run python -c "import secrets; print(secrets.token_hex(32))"`
 
-Required `.env` values:
-```
-DATABASE_URL=postgresql+asyncpg://postgres:yourpassword@localhost:5433/construction_db
-DB_ECHO=False
-SECRET_KEY=your_64char_random_key
-ENVIRONMENT=development
-ACCESS_TOKEN_EXPIRE_MINUTES=30
-REFRESH_TOKEN_EXPIRE_DAYS=7
-JWT_ALGORITHM=HS256
-MAIL_USERNAME=your_gmail@gmail.com
-MAIL_PASSWORD=your_16char_app_password
-MAIL_FROM=your_gmail@gmail.com
-MAIL_FROM_NAME=Construction QMS
-MAIL_PORT=587
-MAIL_SERVER=smtp.gmail.com
-MAIL_STARTTLS=True
-MAIL_SSL_TLS=False
-FRONTEND_URL=http://localhost:3000
-```
-
-Generate SECRET_KEY:
+### 3. Create the database & run migrations
 ```bash
-python -c "import secrets; print(secrets.token_hex(32))"
+# create the DB once (psql, or any client), then:
+uv run alembic upgrade head     # alembic/env.py creates all 5 schemas automatically
 ```
 
-Gmail App Password:
-```
-myaccount.google.com → Security → App passwords
-→ Create → Copy 16-char code → paste as MAIL_PASSWORD
-```
-
-### 4. Create database
+### 4. Run the server
 ```bash
-psql -U postgres -p 5433 -c "CREATE DATABASE construction_db;"
+uv run uvicorn app.main:app --reload
 ```
+- API base: `http://localhost:8000/api/v1`
+- Swagger: `http://localhost:8000/docs`
 
-### 5. Run migrations
+## Common commands
+
 ```bash
-$env:PYTHONPATH = "C:\Users\vikas\Desktop\QMS\backend"
-alembic upgrade head
+uv sync                         # install / update the environment from uv.lock
+uv add <pkg>                    # add a runtime dependency (updates pyproject + uv.lock)
+uv add --dev <pkg>              # add a dev dependency
+uv run uvicorn app.main:app --reload
+uv run alembic revision --autogenerate -m "msg"
+uv run alembic upgrade head
+uv run pytest                   # full suite (uses a dedicated construction_test_db)
+uv run ruff check .             # lint
+uv run ruff format .            # format
 ```
 
-### 6. Start server
+## Testing
+
+Tests are hermetic: `tests/conftest.py` creates a separate **`construction_test_db`**
+on the same server, builds the schema from the models, truncates between tests, and
+stubs outbound email. The live `construction_db` is never touched.
+
 ```bash
-uvicorn app.main:app --reload
+uv run pytest            # unit + integration
+uv run pytest tests/unit
 ```
 
----
+## Auth endpoints
 
-## API Endpoints
-
-Base URL: `http://localhost:8000/api/v1`
-
-Swagger UI: `http://localhost:8000/docs`
-
-### Auth endpoints
+Base: `/api/v1`
 
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
-| POST | `/auth/register` | None | Client self-registers |
-| POST | `/auth/login` | None | Login, returns tokens |
-| POST | `/auth/refresh` | None | Get new access token |
-| POST | `/auth/accept-invitation` | None | Accept invite, create account |
-| POST | `/auth/logout` | Bearer | Blacklist token |
-| GET | `/auth/me` | Bearer | Current user + org |
-| POST | `/auth/register-contractor` | CLIENT_ADMIN | Register contractor org + send email |
-| POST | `/auth/invite` | Any role | Invite user to org |
+| POST | `/auth/register` | — | Client self-registers (org + CLIENT_ADMIN); returns an OTP challenge |
+| POST | `/auth/verify-otp` | — | Verify the emailed code → activate account + tokens |
+| POST | `/auth/resend-otp` | — | Re-send a verification code |
+| POST | `/auth/login` | — | Login, returns access + refresh tokens |
+| POST | `/auth/refresh` | — | New access token from refresh token |
+| POST | `/auth/accept-invitation` | — | Accept invite, create account (returns OTP challenge) |
+| POST | `/auth/logout` | Bearer | Blacklist current access token |
+| GET | `/auth/me` | Bearer | Current user + organisation |
+| GET | `/auth/team` | Bearer | Org directory (users + pending invitations) |
+| POST | `/auth/invite` | role-based | Invite a user to your org |
 
----
+Account activation uses an **email OTP** (activation only): register / accept-invitation create
+an inactive account and email a 6-digit code; `verify-otp` activates it and issues tokens.
+Login itself is password-only.
 
-## Authentication
+Project-scoped endpoints (visibility + management are scoped per project):
 
-JWT Bearer tokens. Include in every authenticated request:
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST/GET | `/projects` | Create (CLIENT_ADMIN) / list (membership-scoped) |
+| GET | `/projects/{id}` | Detail + the viewer's `access` capabilities |
+| GET/POST | `/projects/{id}/members` | List / assign-or-invite a member |
+| GET/POST | `/projects/{id}/contractors` | List / bring a contractor onto the project |
+| GET/POST | `/projects/{id}/suppliers` | List / register an RMC supplier (contractor side) |
+| GET/POST | `/projects/{id}/labs` | List / register a testing lab (contractor side) |
+| GET | `/projects/assigned` | A contractor org's project links (accept screen) |
+| POST | `/projects/assigned/{pc_id}/accept` \| `/decline` | Contractor admin responds |
+
+### Role model
 ```
-Authorization: Bearer <access_token>
-```
+Org roles:     CLIENT_ADMIN, CLIENT_USER, CONTRACTOR_ADMIN, CONTRACTOR_USER,
+               PROJECT_MANAGER, QUALITY_ENGINEER, SUPERVISOR
+Org invites (/auth/invite):
+  CLIENT_ADMIN      → CLIENT_USER
+  CONTRACTOR_ADMIN  → CONTRACTOR_USER, PROJECT_MANAGER, SUPERVISOR, QUALITY_ENGINEER
+  CONTRACTOR_USER   → PROJECT_MANAGER, SUPERVISOR, QUALITY_ENGINEER
 
-Access token expires in 30 minutes.
-Use `/auth/refresh` with your refresh token to get a new access token.
-
----
-
-## Testing the Flow (Swagger)
-
-Since the frontend (Phase 7) is not built yet, use Swagger to test:
-
-### Full registration flow:
-
-**Step 1 — Register as client:**
-```json
-POST /auth/register
-{
-  "org_name": "Godrej Properties",
-  "contact_email": "client@example.com",
-  "contact_phone": "9999999999",
-  "full_name": "Admin Name",
-  "password": "password123",
-  "confirm_password": "password123"
-}
-```
-Copy the `access_token` → click Authorize in Swagger → paste token.
-
-**Step 2 — Register contractor (auto-sends email):**
-```json
-POST /auth/register-contractor
-{
-  "org_name": "L&T Construction",
-  "contact_email": "contractor@example.com",
-  "contact_phone": "8888888888"
-}
-```
-Contractor receives activation email.
-
-**Step 3 — Get token from email:**
-Copy the token from the invitation link in the email.
-
-**Step 4 — Accept invitation:**
-```json
-POST /auth/accept-invitation
-{
-  "token": "paste-token-from-email",
-  "full_name": "Contractor Admin",
-  "password": "password123",
-  "confirm_password": "password123"
-}
+Project flow:
+  CLIENT_ADMIN  creates project + assigns CLIENT_LEAD members
+  CLIENT_LEAD   brings on a contractor (project link starts PENDING)
+  CONTRACTOR_ADMIN  accepts the project + assigns CONTRACTOR_LEAD members
+  CONTRACTOR_LEAD   registers suppliers/labs + assigns PROJECT_MANAGER/QE/SUPERVISOR
 ```
 
-**Step 5 — Login as contractor:**
-```json
-POST /auth/login
-{
-  "email": "contractor@example.com",
-  "password": "password123"
-}
-```
-Authorize with new token.
+## Docker
 
-**Step 6 — Contractor invites PM:**
-```json
-POST /auth/invite
-{
-  "invited_email": "pm@example.com",
-  "role": "PROJECT_MANAGER"
-}
-```
-
-**Step 7 — PM accepts, invites QE, and so on.**
-
----
-
-## Known Issues & Notes
-
-### Enum migrations
-When adding new values to existing PostgreSQL enums, Alembic autogenerate
-produces an empty migration. Always manually add:
-```python
-op.execute("ALTER TYPE schema.enumname ADD VALUE IF NOT EXISTS 'NEW_VALUE'")
-```
-
-### Email template folder
-Templates live at `app/template/email/` (note: singular `template`).
-The path is configured in `app/core/email.py`.
-
-### bcrypt version
-Must use `bcrypt==4.0.1`. Higher versions break passlib compatibility.
-The warning `(trapped) error reading bcrypt version` is harmless.
-
-### PYTHONPATH
-Always set before running alembic:
 ```bash
-$env:PYTHONPATH = "C:\Users\yadav\OneDrive\Desktop\backend"
+# build from the repo root or backend/
+docker build -t qms-backend backend
+docker run --rm -p 8000:8000 --env-file backend/.env qms-backend
 ```
+The image is a multi-stage uv build, runs as a non-root user, and serves
+`app.main:app` on port 8000. Provide configuration via `--env-file` / runtime env —
+secrets are never baked into the image.
 
----
+## Notes
 
-## Phase Progress
-
-| Phase | Description | Status |
-|-------|-------------|--------|
-| Phase 1 | DB foundation — engine, session, Alembic, 5 schemas | ✅ Done |
-| Phase 2 | SQLAlchemy models — all 26 tables across 5 schemas | ✅ Done |
-| Phase 3 (auth) | JWT auth, roles, invitations, email | ✅ Done |
-| Phase 3 (services) | Pour, dispatch, quality engine, NCR | 🔄 Next |
-| Phase 4 | Excel/PDF ingestion pipeline | ⏳ Pending |
-| Phase 5 | Qwen2-VL fine-tuning on Kaggle | ⏳ Pending |
-| Phase 6 | Ollama RAG — failure AI suggestions | ⏳ Pending |
-| Phase 7 | React/Next.js frontend dashboard | ⏳ Pending |
-
----
-
-## Next Steps (Phase 3 continued)
-
-Build in this order:
-1. `schemas/` — project, pour, cube_test, ncr Pydantic schemas
-2. `repositories/` — base_repo, pour_repo, cube_test_repo, ncr_repo
-3. `services/` — project_service, pour_service, quality_engine
-4. `routers/` — projects, pours, cube_tests, ncr, reports
-5. `tasks/` — NCR auto-raise, email notifications, lab reminders
+- **bcrypt** is pinned to `4.0.1` for passlib compatibility; the
+  `(trapped) error reading bcrypt version` warning is harmless.
+- Adding a value to an existing PostgreSQL enum needs a manual migration step:
+  `op.execute("ALTER TYPE schema.enumname ADD VALUE IF NOT EXISTS 'NEW_VALUE'")`.

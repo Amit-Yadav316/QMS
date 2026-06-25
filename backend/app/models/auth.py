@@ -5,11 +5,20 @@ Schema: auth
 
 import enum
 from datetime import datetime
+
 from sqlalchemy import (
-    BigInteger, String, Boolean, DateTime,
-    ForeignKey, Enum as SAEnum, func
+    BigInteger,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
 )
+from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from app.database.base import Base
 
 
@@ -26,13 +35,28 @@ class OrgStatus(str, enum.Enum):
 
 class UserRole(str, enum.Enum):
     CLIENT_ADMIN = "CLIENT_ADMIN"
-    CONTRACTOR_ADMIN = "CONTRACTOR_ADMIN"   
+    CLIENT_USER = "CLIENT_USER"
+    CONTRACTOR_ADMIN = "CONTRACTOR_ADMIN"
+    CONTRACTOR_USER = "CONTRACTOR_USER"
     PROJECT_MANAGER = "PROJECT_MANAGER"
     QUALITY_ENGINEER = "QUALITY_ENGINEER"
     SUPERVISOR = "SUPERVISOR"
 
 
 class TeamRole(str, enum.Enum):
+    PROJECT_MANAGER = "PROJECT_MANAGER"
+    QUALITY_ENGINEER = "QUALITY_ENGINEER"
+    SUPERVISOR = "SUPERVISOR"
+
+
+class ProjectRole(str, enum.Enum):
+    """A user's capacity on a specific project (see ProjectMember).
+
+    CLIENT_LEAD / CONTRACTOR_LEAD are the admin-assigned users who *run* a
+    project for their org; the rest are contractor-side field roles.
+    """
+    CLIENT_LEAD = "CLIENT_LEAD"
+    CONTRACTOR_LEAD = "CONTRACTOR_LEAD"
     PROJECT_MANAGER = "PROJECT_MANAGER"
     QUALITY_ENGINEER = "QUALITY_ENGINEER"
     SUPERVISOR = "SUPERVISOR"
@@ -92,6 +116,12 @@ class User(Base):
     )
     is_org_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # Offboarding: set by an org admin when someone leaves. Distinct from
+    # is_active (which doubles as "email verified") so a deactivated account
+    # can't be reactivated via the OTP flow.
+    is_offboarded: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # Optional profile picture, stored as a small data: URL (no file storage yet).
+    avatar_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -129,6 +159,39 @@ class ProjectTeam(Base):
     user: Mapped["User"] = relationship("User", back_populates="team_assignments")
 
 
+class ProjectMember(Base):
+    """Generic user↔project assignment — drives project-scoped visibility.
+
+    A row means "this user participates in this project as <project_role>".
+    Org admins (CLIENT_ADMIN / CONTRACTOR_ADMIN) get org-wide access without a
+    row. project_role values come from app.models.auth.ProjectRole.
+    """
+
+    __tablename__ = "project_members"
+    __table_args__ = (
+        UniqueConstraint("project_id", "user_id", name="uq_member_project_user"),
+        {"schema": "auth"},
+    )
+
+    member_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    project_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("master.projects.project_id"), nullable=False
+    )
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("auth.users.user_id"), nullable=False
+    )
+    org_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("auth.organisations.org_id"), nullable=False
+    )
+    project_role: Mapped[str] = mapped_column(String(20), nullable=False)
+    assigned_by: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("auth.users.user_id"), nullable=False
+    )
+    assigned_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
 class OrgInvitation(Base):
     __tablename__ = "org_invitations"
     __table_args__ = {"schema": "auth"}
@@ -146,6 +209,12 @@ class OrgInvitation(Base):
     invited_by: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("auth.users.user_id"), nullable=False
     )
+    # Optional project assignment carried by the invite: when set, accepting the
+    # invitation also creates a ProjectMember(project_id, project_role).
+    project_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("master.projects.project_id"), nullable=True
+    )
+    project_role: Mapped[str | None] = mapped_column(String(20), nullable=True)
     token: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
     status: Mapped[InvitationStatus] = mapped_column(
         SAEnum(InvitationStatus, schema="auth"),
@@ -161,6 +230,30 @@ class OrgInvitation(Base):
 
     organisation: Mapped["Organisation"] = relationship(
         "Organisation", back_populates="invitations"
+    )
+
+
+class EmailOtp(Base):
+    """One-time email verification code (activation only — signup / invite-accept)."""
+
+    __tablename__ = "email_otps"
+    __table_args__ = {"schema": "auth"}
+
+    otp_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("auth.users.user_id"), nullable=False
+    )
+    email: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    code_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    purpose: Mapped[str] = mapped_column(String(20), nullable=False)  # SIGNUP | INVITE
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    consumed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
     )
 
 

@@ -1,0 +1,230 @@
+"""
+Integration tests for Phase 5 — the NCR lifecycle:
+
+  An auto-raised NCR (from a failing cube test) is reviewed → a root cause is
+  recorded → corrective actions are logged and worked → penalties are applied →
+  the NCR is closed (only once root cause + all actions are done) and can be
+  reopened.
+
+Plus RBAC (only the QE drives the lifecycle), the OPEN→UNDER_REVIEW→CLOSED
+transition guards, and the list/detail roll-ups.
+"""
+
+from tests.helpers import API, bearer
+from tests.integration.test_phase4_cube_flow import (
+    _cast_sample,
+    _qe_pour,
+    _record_test,
+)
+
+
+async def _open_ncr(client, db_session):
+    """(contractor_token, qe_token, pid, ncr_id) — a fresh OPEN NCR raised by a
+    failing 28-day test (M30 required 30.0, observed 27.0 → FAIL)."""
+    contractor_token, qe_token, pid, pour_id = await _qe_pour(client, db_session)
+    sample_id = (await _cast_sample(client, qe_token, pid, pour_id)).json()["sample_id"]
+    test = (
+        await _record_test(client, qe_token, pid, sample_id, observed_strength_mpa=27.0)
+    ).json()
+    return contractor_token, qe_token, pid, test["ncr_id"]
+
+
+def _patch_ncr(client, token, pid, ncr_id, **body):
+    return client.patch(
+        f"{API}/projects/{pid}/ncrs/{ncr_id}", json=body, headers=bearer(token)
+    )
+
+
+def _add_action(client, token, pid, ncr_id, **body):
+    body.setdefault("action_description", "Re-pour the affected slab section")
+    return client.post(
+        f"{API}/projects/{pid}/ncrs/{ncr_id}/corrective-actions",
+        json=body,
+        headers=bearer(token),
+    )
+
+
+def _add_penalty(client, token, pid, ncr_id, **body):
+    body.setdefault("penalty_type", "RATE_REDUCTION")
+    return client.post(
+        f"{API}/projects/{pid}/ncrs/{ncr_id}/penalties",
+        json=body,
+        headers=bearer(token),
+    )
+
+
+class TestNCRLifecycle:
+    async def test_new_ncr_starts_open(self, client, db_session):
+        _, qe_token, pid, ncr_id = await _open_ncr(client, db_session)
+        ncr = (
+            await client.get(
+                f"{API}/projects/{pid}/ncrs/{ncr_id}", headers=bearer(qe_token)
+            )
+        ).json()
+        assert ncr["status"] == "OPEN"
+        assert ncr["closed_at"] is None
+        assert ncr["corrective_actions"] == []
+        assert ncr["penalties"] == []
+
+    async def test_review_records_status_and_root_cause(self, client, db_session):
+        _, qe_token, pid, ncr_id = await _open_ncr(client, db_session)
+        resp = await _patch_ncr(
+            client, qe_token, pid, ncr_id,
+            status="UNDER_REVIEW", root_cause="Low cement content in the mix",
+        )
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["status"] == "UNDER_REVIEW"
+        assert body["root_cause"] == "Low cement content in the mix"
+
+    async def test_cannot_skip_review_and_close_directly(self, client, db_session):
+        _, qe_token, pid, ncr_id = await _open_ncr(client, db_session)
+        resp = await _patch_ncr(client, qe_token, pid, ncr_id, status="CLOSED")
+        assert resp.status_code == 400
+
+    async def test_close_requires_a_root_cause(self, client, db_session):
+        _, qe_token, pid, ncr_id = await _open_ncr(client, db_session)
+        await _patch_ncr(client, qe_token, pid, ncr_id, status="UNDER_REVIEW")
+        resp = await _patch_ncr(client, qe_token, pid, ncr_id, status="CLOSED")
+        assert resp.status_code == 400
+        assert "root cause" in resp.json()["detail"].lower()
+
+    async def test_close_blocked_until_actions_completed(self, client, db_session):
+        _, qe_token, pid, ncr_id = await _open_ncr(client, db_session)
+        await _patch_ncr(
+            client, qe_token, pid, ncr_id, status="UNDER_REVIEW", root_cause="Bad batch"
+        )
+        action_id = (await _add_action(client, qe_token, pid, ncr_id)).json()["action_id"]
+
+        blocked = await _patch_ncr(client, qe_token, pid, ncr_id, status="CLOSED")
+        assert blocked.status_code == 400
+        assert "corrective action" in blocked.json()["detail"].lower()
+
+        await client.patch(
+            f"{API}/projects/{pid}/ncrs/{ncr_id}/corrective-actions/{action_id}",
+            json={"status": "COMPLETED"},
+            headers=bearer(qe_token),
+        )
+        closed = await _patch_ncr(client, qe_token, pid, ncr_id, status="CLOSED")
+        assert closed.status_code == 200, closed.text
+        assert closed.json()["status"] == "CLOSED"
+        assert closed.json()["closed_at"] is not None
+
+    async def test_close_with_no_actions_just_needs_root_cause(self, client, db_session):
+        _, qe_token, pid, ncr_id = await _open_ncr(client, db_session)
+        await _patch_ncr(
+            client, qe_token, pid, ncr_id, status="UNDER_REVIEW", root_cause="Curing gap"
+        )
+        resp = await _patch_ncr(client, qe_token, pid, ncr_id, status="CLOSED")
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["status"] == "CLOSED"
+
+    async def test_reopen_clears_closed_at(self, client, db_session):
+        _, qe_token, pid, ncr_id = await _open_ncr(client, db_session)
+        await _patch_ncr(
+            client, qe_token, pid, ncr_id, status="UNDER_REVIEW", root_cause="x"
+        )
+        await _patch_ncr(client, qe_token, pid, ncr_id, status="CLOSED")
+        resp = await _patch_ncr(client, qe_token, pid, ncr_id, status="UNDER_REVIEW")
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "UNDER_REVIEW"
+        assert resp.json()["closed_at"] is None
+
+    async def test_non_qe_cannot_update_ncr(self, client, db_session):
+        contractor_token, _, pid, ncr_id = await _open_ncr(client, db_session)
+        resp = await _patch_ncr(
+            client, contractor_token, pid, ncr_id, status="UNDER_REVIEW"
+        )
+        assert resp.status_code == 403
+
+    async def test_update_unknown_ncr_is_404(self, client, db_session):
+        _, qe_token, pid, _ = await _open_ncr(client, db_session)
+        resp = await _patch_ncr(client, qe_token, pid, 999999, status="UNDER_REVIEW")
+        assert resp.status_code == 404
+
+
+class TestCorrectiveActions:
+    async def test_add_action_appears_in_detail_with_counts(self, client, db_session):
+        _, qe_token, pid, ncr_id = await _open_ncr(client, db_session)
+        resp = await _add_action(client, qe_token, pid, ncr_id)
+        assert resp.status_code == 201, resp.text
+        assert resp.json()["status"] == "PENDING"
+
+        ncr = (
+            await client.get(
+                f"{API}/projects/{pid}/ncrs/{ncr_id}", headers=bearer(qe_token)
+            )
+        ).json()
+        assert ncr["corrective_action_count"] == 1
+        assert ncr["open_action_count"] == 1
+        assert len(ncr["corrective_actions"]) == 1
+
+    async def test_completing_action_drops_open_count(self, client, db_session):
+        _, qe_token, pid, ncr_id = await _open_ncr(client, db_session)
+        action_id = (await _add_action(client, qe_token, pid, ncr_id)).json()["action_id"]
+        resp = await client.patch(
+            f"{API}/projects/{pid}/ncrs/{ncr_id}/corrective-actions/{action_id}",
+            json={"status": "COMPLETED"},
+            headers=bearer(qe_token),
+        )
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "COMPLETED"
+
+        ncr = (
+            await client.get(
+                f"{API}/projects/{pid}/ncrs/{ncr_id}", headers=bearer(qe_token)
+            )
+        ).json()
+        assert ncr["open_action_count"] == 0
+
+    async def test_cannot_add_action_to_closed_ncr(self, client, db_session):
+        _, qe_token, pid, ncr_id = await _open_ncr(client, db_session)
+        await _patch_ncr(
+            client, qe_token, pid, ncr_id, status="UNDER_REVIEW", root_cause="x"
+        )
+        await _patch_ncr(client, qe_token, pid, ncr_id, status="CLOSED")
+        resp = await _add_action(client, qe_token, pid, ncr_id)
+        assert resp.status_code == 400
+
+    async def test_non_qe_cannot_add_action(self, client, db_session):
+        contractor_token, _, pid, ncr_id = await _open_ncr(client, db_session)
+        resp = await _add_action(client, contractor_token, pid, ncr_id)
+        assert resp.status_code == 403
+
+
+class TestPenalties:
+    async def test_apply_penalty_appears_in_detail(self, client, db_session):
+        _, qe_token, pid, ncr_id = await _open_ncr(client, db_session)
+        resp = await _add_penalty(
+            client, qe_token, pid, ncr_id,
+            penalty_type="RATE_REDUCTION", amount=50000, description="10% rate cut",
+        )
+        assert resp.status_code == 201, resp.text
+        assert resp.json()["penalty_type"] == "RATE_REDUCTION"
+
+        ncr = (
+            await client.get(
+                f"{API}/projects/{pid}/ncrs/{ncr_id}", headers=bearer(qe_token)
+            )
+        ).json()
+        assert ncr["penalty_count"] == 1
+        assert ncr["penalties"][0]["amount"] == 50000
+
+    async def test_non_qe_cannot_apply_penalty(self, client, db_session):
+        contractor_token, _, pid, ncr_id = await _open_ncr(client, db_session)
+        resp = await _add_penalty(client, contractor_token, pid, ncr_id)
+        assert resp.status_code == 403
+
+
+class TestNCRListSummary:
+    async def test_list_carries_lifecycle_counts(self, client, db_session):
+        _, qe_token, pid, ncr_id = await _open_ncr(client, db_session)
+        await _add_action(client, qe_token, pid, ncr_id)
+        await _add_penalty(client, qe_token, pid, ncr_id)
+        rows = (
+            await client.get(f"{API}/projects/{pid}/ncrs", headers=bearer(qe_token))
+        ).json()
+        assert len(rows) == 1
+        assert rows[0]["corrective_action_count"] == 1
+        assert rows[0]["open_action_count"] == 1
+        assert rows[0]["penalty_count"] == 1

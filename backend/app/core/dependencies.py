@@ -26,18 +26,22 @@ Usage in routers:
         ...
 """
 
-from typing import Callable
-from fastapi import Depends
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from collections.abc import Callable
 
-from app.database.session import get_db
-from app.core.security import decode_token
+from fastapi import Depends
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.exceptions import (
-    InvalidTokenError, TokenBlacklistedError,
-    InactiveUserError, PermissionDeniedError,
+    AccountDeactivatedError,
+    InactiveUserError,
+    InvalidTokenError,
+    PermissionDeniedError,
+    TokenBlacklistedError,
 )
+from app.core.security import decode_token
+from app.database.session import get_db
 from app.models.auth import User, UserRole
 
 bearer_scheme = HTTPBearer()
@@ -79,6 +83,9 @@ async def get_current_user(
 
     if not user:
         raise InvalidTokenError()
+
+    if user.is_offboarded:
+        raise AccountDeactivatedError()
 
     if not user.is_active:
         raise InactiveUserError()

@@ -1,0 +1,62 @@
+[project]
+name = "qms-backend"
+version = "0.1.0"
+description = "Construction Quality Management System — FastAPI backend"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+    # Web framework
+    "fastapi==0.111.0",
+    "uvicorn[standard]==0.29.0",
+    # Database — async stack
+    "sqlalchemy[asyncio]==2.0.30",
+    "asyncpg==0.29.0",
+    "alembic==1.13.1",
+    # Auth
+    "python-jose[cryptography]==3.3.0",
+    "passlib[bcrypt]==1.7.4",
+    "bcrypt==4.0.1",
+    "python-multipart==0.0.9",
+    # Email
+    "fastapi-mail==1.4.1",
+    "jinja2==3.1.4",
+    # Config & validation
+    "pydantic==2.7.1",
+    "pydantic-settings==2.2.1",
+    "email-validator==2.3.0",  # required by pydantic EmailStr
+]
+
+[dependency-groups]
+dev = [
+    "pytest==8.2.0",
+    "pytest-asyncio==0.23.6",
+    "httpx==0.27.0",
+    "ruff>=0.6",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+# Editable-install the app package so `app...` imports resolve everywhere
+# (tests, alembic, uvicorn) without any PYTHONPATH juggling.
+packages = ["app"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "--tb=short"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+extend-exclude = ["alembic/versions", ".venv"]
+
+[tool.ruff.lint]
+# pycodestyle errors, pyflakes, isort, pyupgrade, bugbear.
+select = ["E", "F", "I", "UP", "B"]
+ignore = [
+    "E501",   # line length — handled by the formatter, not enforced hard
+    "B008",   # Depends()/require_role() in defaults is the idiomatic FastAPI pattern
+    "UP042",  # str-mixin Enums are intentional (SQLAlchemy/Pydantic value serialization)
+]

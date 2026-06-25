@@ -4,7 +4,7 @@ import {
   ShieldCheck, Truck, TestTube, ArrowRight, CheckCircle,
   Zap, Globe, Lock, Play, Building2,
   FileText, Box, Link, AlertTriangle, MessageSquare,
-  ChevronDown, Menu, X, Clock
+  ChevronDown, Menu, X, Clock, Layers
 } from 'lucide-react';
 import './LandingPage.css';
 
@@ -16,6 +16,8 @@ import godrejLogo from '../assets/logos/godrej.svg';
 import tataLogo from '../assets/logos/tata.svg';
 
 import { AnimatedHeroVisual } from '../components/AnimatedHeroVisual';
+import { useAuth } from '../hooks/useAuth';
+import { getApiErrorMessage } from '../api/client';
 
 const CLIENTS = [
   { name: 'Larsen & Toubro', img: ltLogo },
@@ -95,7 +97,7 @@ const STATS = [
 
 const TESTIMONIALS = [
   {
-    quote: "We used to have QA managers running around with clipboards. Now everything is on QMS — from the RMC challan to the cube result. Our IS 456 audit took 2 hours instead of 2 days.",
+    quote: "We used to have QA managers running around with clipboards. Now everything is on Strata — from the RMC challan to the cube result. Our IS 456 audit took 2 hours instead of 2 days.",
     name: "Rajiv Mehta",
     role: "QA Head, Tier-1 Contractor",
     project: "32-tower residential project, Pune",
@@ -117,7 +119,7 @@ const TESTIMONIALS = [
 const FAQS = [
   {
     q: "Do we need to install any hardware or app?",
-    a: "No hardware required. QMS runs entirely in the browser — on any phone, tablet or laptop. Guards use a phone camera to scan QR codes. Labs access the portal from any browser. Nothing to install or maintain.",
+    a: "No hardware required. Strata runs entirely in the browser — on any phone, tablet or laptop. Guards use a phone camera to scan QR codes. Labs access the portal from any browser. Nothing to install or maintain.",
   },
   {
     q: "Does it work without internet on site?",
@@ -125,11 +127,11 @@ const FAQS = [
   },
   {
     q: "How does the IS 456:2000 validation actually work?",
-    a: "When a lab uploads a cube result, QMS automatically compares it against the acceptance criteria in IS 456:2000 for the specified grade. If it fails, an NCR is raised automatically and the assigned stakeholders are notified within seconds.",
+    a: "When a lab uploads a cube result, Strata automatically compares it against the acceptance criteria in IS 456:2000 for the specified grade. If it fails, an NCR is raised automatically and the assigned stakeholders are notified within seconds.",
   },
   {
     q: "Can we use our existing RMC supplier's challan format?",
-    a: "Yes. QMS generates a QR-coded digital challan that your RMC supplier attaches to every truck. Alternatively, QMS can integrate with your supplier's existing system. Setup typically takes 1–2 hours per supplier.",
+    a: "Yes. Strata generates a QR-coded digital challan that your RMC supplier attaches to every truck. Alternatively, Strata can integrate with your supplier's existing system. Setup typically takes 1–2 hours per supplier.",
   },
   {
     q: "How long does it take to go live on a new project?",
@@ -198,11 +200,84 @@ const COMPARISON_ROWS = [
 
 export const LandingPage: React.FC = () => {
   const navigate = useNavigate();
+  const { login, register, resendOtp } = useAuth();
   const [scrolled, setScrolled] = useState(false);
-  const [showLogin, setShowLogin] = useState(false);
+  const [showAuth, setShowAuth] = useState(false);
+  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [openFaq, setOpenFaq] = useState<number | null>(null);
   const [activeRole, setActiveRole] = useState(0);
+
+  // Shared auth modal state
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [authSubmitting, setAuthSubmitting] = useState(false);
+
+  // Login fields
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+
+  // Register fields (client self-registration → POST /auth/register)
+  const [regOrgName, setRegOrgName] = useState('');
+  const [regFullName, setRegFullName] = useState('');
+  const [regEmail, setRegEmail] = useState('');
+  const [regPhone, setRegPhone] = useState('');
+  const [regPassword, setRegPassword] = useState('');
+  const [regConfirm, setRegConfirm] = useState('');
+
+  const openAuth = (mode: 'login' | 'register') => {
+    setAuthMode(mode);
+    setAuthError(null);
+    setShowAuth(true);
+  };
+
+  const scrollToId = (id: string) =>
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError(null);
+    setAuthSubmitting(true);
+    try {
+      await login(loginEmail, loginPassword);
+      navigate('/app');
+    } catch (err) {
+      const msg = getApiErrorMessage(err, 'Incorrect email or password');
+      if (msg.toLowerCase().includes('not verified')) {
+        try { await resendOtp(loginEmail); } catch { /* best-effort */ }
+        navigate('/auth/verify-otp', { state: { email: loginEmail } });
+        return;
+      }
+      setAuthError(msg);
+    } finally {
+      setAuthSubmitting(false);
+    }
+  };
+
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError(null);
+    if (regPassword !== regConfirm) {
+      setAuthError('Passwords do not match');
+      return;
+    }
+    setAuthSubmitting(true);
+    try {
+      await register({
+        org_name: regOrgName,
+        contact_email: regEmail,
+        contact_phone: regPhone || null,
+        full_name: regFullName,
+        password: regPassword,
+        confirm_password: regConfirm,
+      });
+      // Account created but inactive — verify the emailed code to activate.
+      navigate('/auth/verify-otp', { state: { email: regEmail } });
+    } catch (err) {
+      setAuthError(getApiErrorMessage(err, 'Could not create your account. Please try again.'));
+    } finally {
+      setAuthSubmitting(false);
+    }
+  };
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20);
@@ -216,9 +291,9 @@ export const LandingPage: React.FC = () => {
       <nav className={`lp-nav ${scrolled ? 'lp-nav--scrolled' : ''}`} aria-label="Main navigation">
         <div className="lp-nav-inner">
           <div className="lp-logo">
-            <div className="lp-logo-mark">QM</div>
+            <div className="lp-logo-mark"><Layers size={20} /></div>
             <div>
-              <div className="lp-logo-name">QMS</div>
+              <div className="lp-logo-name">Strata</div>
               <div className="lp-logo-tag">Quality Management</div>
             </div>
           </div>
@@ -229,8 +304,8 @@ export const LandingPage: React.FC = () => {
             <a href="#faq">FAQ</a>
           </div>
           <div className="lp-nav-cta">
-            <button className="lp-btn lp-btn--ghost" onClick={() => setShowLogin(true)} aria-label="Log in to your account">Log In</button>
-            <button className="lp-btn lp-btn--primary" onClick={() => setShowLogin(true)} aria-label="Book a live demo">Book a Live Demo</button>
+            <button className="lp-btn lp-btn--ghost" onClick={() => openAuth('login')} aria-label="Log in to your account">Log In</button>
+            <button className="lp-btn lp-btn--primary" onClick={() => openAuth('register')} aria-label="Create your account">Get Started</button>
           </div>
           <button className="lp-hamburger" onClick={() => setMobileMenuOpen(true)} aria-label="Open menu">
             <Menu size={24} />
@@ -249,7 +324,7 @@ export const LandingPage: React.FC = () => {
               <a href="#stats" onClick={() => setMobileMenuOpen(false)}>Results</a>
               <a href="#faq" onClick={() => setMobileMenuOpen(false)}>FAQ</a>
             </nav>
-            <button className="lp-btn lp-btn--hero lp-drawer-cta" onClick={() => { setShowLogin(true); setMobileMenuOpen(false); }}>Book a Live Demo</button>
+            <button className="lp-btn lp-btn--hero lp-drawer-cta" onClick={() => { openAuth('register'); setMobileMenuOpen(false); }}>Get Started</button>
           </div>
         </div>
       )}
@@ -264,15 +339,15 @@ export const LandingPage: React.FC = () => {
             </h1>
             <p className="lp-hero-qualifier">Built for contractors managing 5 or more towers and 100 or more pours per month.</p>
             <p className="lp-hero-desc">
-              From the RMC plant to the structural slab — QMS gives you end-to-end
+              From the RMC plant to the structural slab — Strata gives you end-to-end
               visibility of every cubic metre poured on site. Automated validation,
               real-time dashboards and a chatbot that knows your project inside out.
             </p>
             <div className="lp-hero-actions">
-              <button className="lp-btn lp-btn--hero" onClick={() => setShowLogin(true)} aria-label="Book a live demo">
+              <button className="lp-btn lp-btn--hero" onClick={() => openAuth('register')} aria-label="Book a live demo">
                 Book a Live Demo
               </button>
-              <button className="lp-btn lp-btn--outline" onClick={() => setShowLogin(true)} aria-label="See how it works">
+              <button className="lp-btn lp-btn--outline" onClick={() => scrollToId('workflow')} aria-label="See how it works">
                 <Play size={16} fill="currentColor" /> See How It Works
               </button>
             </div>
@@ -383,7 +458,7 @@ export const LandingPage: React.FC = () => {
       <section className="lp-section lp-section--white" id="chatbot">
         <div className="lp-section-inner lp-chatbot-inner">
           <div className="lp-chatbot-text">
-            <h2 className="lp-section-h2">QMS knows your project.<br />Ask it anything.</h2>
+            <h2 className="lp-section-h2">Strata knows your project.<br />Ask it anything.</h2>
             <p className="lp-section-sub" style={{ textAlign: 'left', marginTop: 16 }}>
               Ask about any pour, batch, supplier, failure or NCR in plain language. Get an answer from your live project data in seconds.
             </p>
@@ -434,7 +509,7 @@ export const LandingPage: React.FC = () => {
         <div className="lp-section-inner">
           <div className="lp-section-header">
             <h2 className="lp-section-h2">What Project Teams Are Saying</h2>
-            <p className="lp-section-sub">From site engineers to QA heads — here's what changed when they switched to QMS.</p>
+            <p className="lp-section-sub">From site engineers to QA heads — here's what changed when they switched to Strata.</p>
           </div>
           <div className="lp-testimonials-grid">
             {TESTIMONIALS.map((t, i) => (
@@ -459,13 +534,13 @@ export const LandingPage: React.FC = () => {
       <section className="lp-section" id="comparison">
         <div className="lp-section-inner">
           <div className="lp-section-header">
-            <h2 className="lp-section-h2">QMS vs. The Way It's Done Now</h2>
+            <h2 className="lp-section-h2">Strata vs. The Way It's Done Now</h2>
             <p className="lp-section-sub">Paper records and WhatsApp groups can't give you the traceability IS 456 demands.</p>
           </div>
           <div className="lp-comparison-table">
             <div className="lp-comparison-header">
               <div className="lp-comparison-feature-col">Feature</div>
-              <div className="lp-comparison-col lp-comparison-col--qms">QMS</div>
+              <div className="lp-comparison-col lp-comparison-col--qms">Strata</div>
               <div className="lp-comparison-col">Paper Records</div>
               <div className="lp-comparison-col">WhatsApp / Excel</div>
             </div>
@@ -511,12 +586,12 @@ export const LandingPage: React.FC = () => {
       <section className="lp-cta-section">
         <div className="lp-cta-inner">
           <h2 className="lp-cta-h2">Stop managing quality in spreadsheets.</h2>
-          <p className="lp-cta-sub">Book a 30-minute live demo. We'll walk through your project type, your current QA process, and show you exactly how QMS fits in.</p>
+          <p className="lp-cta-sub">Book a 30-minute live demo. We'll walk through your project type, your current QA process, and show you exactly how Strata fits in.</p>
           <div className="lp-cta-actions">
-            <button className="lp-btn lp-btn--hero" onClick={() => setShowLogin(true)} aria-label="Book a live demo">
+            <button className="lp-btn lp-btn--hero" onClick={() => openAuth('register')} aria-label="Book a live demo">
               Book a Live Demo <ArrowRight size={18} />
             </button>
-            <button className="lp-btn lp-btn--outline" onClick={() => setShowLogin(true)} aria-label="Log in to dashboard">
+            <button className="lp-btn lp-btn--outline" onClick={() => openAuth('login')} aria-label="Log in to dashboard">
               Log In to Dashboard
             </button>
           </div>
@@ -528,9 +603,9 @@ export const LandingPage: React.FC = () => {
         <div className="lp-footer-inner">
           <div>
             <div className="lp-logo">
-              <div className="lp-logo-mark">QM</div>
+              <div className="lp-logo-mark"><Layers size={20} /></div>
               <div>
-                <div className="lp-logo-name">QMS</div>
+                <div className="lp-logo-name">Strata</div>
               </div>
             </div>
             <p className="lp-footer-desc">End-to-end concrete quality traceability for construction projects of all scales.</p>
@@ -565,41 +640,116 @@ export const LandingPage: React.FC = () => {
           </div>
         </div>
         <div className="lp-footer-bottom">
-          <span>© 2026 QMS Platform. All rights reserved.</span>
+          <span>© 2026 Strata Platform. All rights reserved.</span>
           <span>IS 456:2000 · IS 1199 · BIS Compliant</span>
         </div>
       </footer>
 
-      {/* LOGIN MODAL */}
-      {showLogin && (
-        <div className="lp-modal-overlay" onClick={() => setShowLogin(false)}>
+      {/* AUTH MODAL (login + signup) */}
+      {showAuth && (
+        <div className="lp-modal-overlay" onClick={() => setShowAuth(false)}>
           <div className="lp-modal" onClick={e => e.stopPropagation()}>
-            <div className="lp-modal-close" onClick={() => setShowLogin(false)} role="button" aria-label="Close login modal">×</div>
+            <div className="lp-modal-close" onClick={() => setShowAuth(false)} role="button" aria-label="Close">×</div>
 
             <div className="lp-modal-header">
-              <div className="lp-logo-mark" style={{ margin: '0 auto 16px' }}>QM</div>
-              <h2 className="lp-modal-title">Welcome back</h2>
-              <p className="lp-modal-sub">Log in to your QMS account</p>
+              <div className="lp-logo-mark" style={{ margin: '0 auto 16px' }}><Layers size={20} /></div>
+              <h2 className="lp-modal-title">{authMode === 'login' ? 'Welcome back' : 'Create your account'}</h2>
+              <p className="lp-modal-sub">
+                {authMode === 'login' ? 'Log in to your Strata account' : 'Register your company and admin account'}
+              </p>
             </div>
 
-            <form className="lp-modal-form" onSubmit={(e) => {
-              e.preventDefault();
-              navigate('/app');
-            }}>
-              <div className="lp-form-group">
-                <label className="lp-form-label">Email address</label>
-                <input type="email" className="lp-form-input" placeholder="admin@construction.com" required aria-label="Email address" />
+            {authError && (
+              <div className="lp-form-group" style={{ color: '#b91c1c', fontSize: 13 }} role="alert">
+                {authError}
               </div>
+            )}
 
-              <div className="lp-form-group">
-                <label className="lp-form-label">Password</label>
-                <input type="password" className="lp-form-input" placeholder="••••••••" required aria-label="Password" />
-              </div>
+            {authMode === 'login' ? (
+              <form className="lp-modal-form" onSubmit={handleLogin}>
+                <div className="lp-form-group">
+                  <label className="lp-form-label">Email address</label>
+                  <input
+                    type="email" className="lp-form-input" placeholder="admin@construction.com"
+                    required aria-label="Email address"
+                    value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)}
+                  />
+                </div>
+                <div className="lp-form-group">
+                  <label className="lp-form-label">Password</label>
+                  <input
+                    type="password" className="lp-form-input" placeholder="••••••••"
+                    required aria-label="Password"
+                    value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)}
+                  />
+                </div>
+                <button type="submit" className="lp-btn lp-btn--hero" style={{ width: '100%' }} disabled={authSubmitting}>
+                  {authSubmitting ? 'Signing in…' : 'Sign In to Strata'}
+                </button>
+              </form>
+            ) : (
+              <form className="lp-modal-form" onSubmit={handleRegister}>
+                <div className="lp-form-group">
+                  <label className="lp-form-label">Company name</label>
+                  <input
+                    type="text" className="lp-form-input" placeholder="e.g. Godrej Properties"
+                    required value={regOrgName} onChange={(e) => setRegOrgName(e.target.value)}
+                  />
+                </div>
+                <div className="lp-form-group">
+                  <label className="lp-form-label">Your full name</label>
+                  <input
+                    type="text" className="lp-form-input" placeholder="As per company ID"
+                    required value={regFullName} onChange={(e) => setRegFullName(e.target.value)}
+                  />
+                </div>
+                <div className="lp-form-group">
+                  <label className="lp-form-label">Work email</label>
+                  <input
+                    type="email" className="lp-form-input" placeholder="admin@construction.com"
+                    required value={regEmail} onChange={(e) => setRegEmail(e.target.value)}
+                  />
+                </div>
+                <div className="lp-form-group">
+                  <label className="lp-form-label">Phone <span style={{ color: 'var(--lp-slate-light)', fontWeight: 400 }}>(optional)</span></label>
+                  <input
+                    type="tel" className="lp-form-input" placeholder="+91"
+                    value={regPhone} onChange={(e) => setRegPhone(e.target.value)}
+                  />
+                </div>
+                <div className="lp-form-group">
+                  <label className="lp-form-label">Password</label>
+                  <input
+                    type="password" className="lp-form-input" placeholder="At least 8 characters"
+                    required minLength={8} value={regPassword} onChange={(e) => setRegPassword(e.target.value)}
+                  />
+                </div>
+                <div className="lp-form-group">
+                  <label className="lp-form-label">Confirm password</label>
+                  <input
+                    type="password" className="lp-form-input" placeholder="••••••••"
+                    required value={regConfirm} onChange={(e) => setRegConfirm(e.target.value)}
+                  />
+                </div>
+                <button type="submit" className="lp-btn lp-btn--hero" style={{ width: '100%' }} disabled={authSubmitting}>
+                  {authSubmitting ? 'Creating account…' : 'Create account'}
+                </button>
+              </form>
+            )}
 
-              <button type="submit" className="lp-btn lp-btn--hero" style={{ width: '100%' }} aria-label="Sign in to QMS">
-                Sign In to QMS
-              </button>
-            </form>
+            <div className="lp-modal-switch">
+              {authMode === 'login' ? (
+                <>
+                  Don't have an account?
+                  <button type="button" onClick={() => { setAuthMode('register'); setAuthError(null); }}>Sign up</button>
+                </>
+              ) : (
+                <>
+                  Already have an account?
+                  <button type="button" onClick={() => { setAuthMode('login'); setAuthError(null); }}>Log in</button>
+                </>
+              )}
+            </div>
           </div>
         </div>
       )}

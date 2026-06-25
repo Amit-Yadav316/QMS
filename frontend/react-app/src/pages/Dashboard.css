@@ -1,6 +1,6 @@
 .qms-kpi-grid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
   gap: 16px;
   margin-bottom: 24px;
 }
@@ -62,7 +62,7 @@
 }
 
 .qms-chart-container {
-  height: 140px;
+  height: 220px;
   width: 100%;
 }
 
@@ -128,7 +128,7 @@
 .qms-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .qms-table th {
