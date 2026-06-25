@@ -1,6 +1,6 @@
 // Cube tests API — project-scoped wrappers over the Phase 4 endpoints:
-// cube samples, strength tests, and the NCRs auto-raised on failure.
-// See backend/app/routers/cube_tests.py.
+// cube samples and strength tests (NCRs are auto-raised on failure; the NCR
+// lifecycle lives in api/ncrs.ts). See backend/app/routers/cube_tests.py.
 
 import { api } from './client';
 import type {
@@ -8,7 +8,6 @@ import type {
   CubeSampleResponse,
   CubeTestCreate,
   CubeTestResponse,
-  NCRResponse,
 } from '../types/master';
 
 export const cubeTestsApi = {
@@ -45,20 +44,6 @@ export const cubeTestsApi = {
   ): Promise<CubeTestResponse> {
     return api
       .post<CubeTestResponse>(`/projects/${projectId}/samples/${sampleId}/tests`, data)
-      .then((r) => r.data);
-  },
-
-  // ── NCRs (read-only here; lifecycle in Phase 5) ───────────────────────────
-
-  listNcrs(projectId: number): Promise<NCRResponse[]> {
-    return api
-      .get<NCRResponse[]>(`/projects/${projectId}/ncrs`)
-      .then((r) => r.data);
-  },
-
-  getNcr(projectId: number, ncrId: number): Promise<NCRResponse> {
-    return api
-      .get<NCRResponse>(`/projects/${projectId}/ncrs/${ncrId}`)
       .then((r) => r.data);
   },
 };
