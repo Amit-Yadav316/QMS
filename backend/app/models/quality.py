@@ -121,6 +121,7 @@ class NCR(Base):
     __table_args__ = (
         Index("idx_ncr_status", "status"),
         Index("idx_ncr_pour", "pour_id"),
+        Index("idx_ncr_number", "ncr_number"),
         {"schema": "quality"},
     )
 

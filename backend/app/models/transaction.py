@@ -46,6 +46,10 @@ class Pour(Base):
     __table_args__ = (
         Index("idx_pours_project_tower_floor", "project_id", "tower_id", "floor_id"),
         Index("idx_pours_pour_date", "pour_date"),
+        # Phase 6 analytics group-bys (supplier scorecard, grade trend) + search.
+        Index("idx_pours_project_supplier", "project_id", "supplier_horizontal_id"),
+        Index("idx_pours_project_grade", "project_id", "grade_id"),
+        Index("idx_pours_reference", "pour_reference"),
         {"schema": "transaction"},
     )
 
@@ -162,6 +166,11 @@ class TruckDispatch(Base):
     __tablename__ = "truck_dispatches"
     __table_args__ = (
         UniqueConstraint("token", name="uq_truck_token"),
+        # Phase 6: dispatch acceptance metrics + traceability search.
+        Index("idx_truck_dispatch", "dispatch_id"),
+        Index("idx_truck_status", "status"),
+        Index("idx_truck_challan", "challan_number"),
+        Index("idx_truck_vehicle", "vehicle_number"),
         {"schema": "transaction"},
     )
 
@@ -204,7 +213,11 @@ class TruckDispatch(Base):
 
 class PourDispatchLink(Base):
     __tablename__ = "pour_dispatch_links"
-    __table_args__ = {"schema": "transaction"}
+    __table_args__ = (
+        Index("idx_pdl_pour", "pour_id"),
+        Index("idx_pdl_dispatch", "dispatch_id"),
+        {"schema": "transaction"},
+    )
 
     link_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     pour_id: Mapped[int] = mapped_column(
@@ -222,6 +235,7 @@ class CubeSample(Base):
     __tablename__ = "cube_samples"
     __table_args__ = (
         Index("idx_cube_sample_pour", "pour_id"),
+        Index("idx_cube_sample_reference", "sample_reference"),
         {"schema": "transaction"},
     )
 
