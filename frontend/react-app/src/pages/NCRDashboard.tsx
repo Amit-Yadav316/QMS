@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle, CheckCircle, Clock, ChevronDown, ChevronRight, Plus, Gavel,
+  Sparkles, ShieldAlert, Wand2,
 } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
@@ -10,9 +11,12 @@ import { Select } from '../components/ui/Select';
 import { useProject } from '../components/layout/ProjectLayout';
 import { useAuth } from '../hooks/useAuth';
 import { ncrsApi } from '../api/ncrs';
+import { aiSuggestionsApi } from '../api/aiSuggestions';
 import { getApiErrorMessage } from '../api/client';
 import type {
   ActionStatus,
+  AISuggestionResponse,
+  ConfidenceLevel,
   NCRDetailResponse,
   NCRResponse,
   NCRStatus,
@@ -309,6 +313,15 @@ const NCRDetailPanel: React.FC<PanelProps> = ({ pid, ncrId, isQE, onChanged }) =
         )}
       </div>
 
+      {/* AI suggestion (Phase 9 — RAG over past resolved NCRs) */}
+      <AISuggestionSection
+        pid={pid}
+        ncrId={ncrId}
+        isQE={isQE}
+        isClosed={isClosed}
+        onApplied={async () => { await load(); onChanged(); }}
+      />
+
       {/* Root cause */}
       <div>
         <h4 className="qms-section-heading" style={{ marginBottom: 6 }}>Root cause</h4>
@@ -417,6 +430,174 @@ const NCRDetailPanel: React.FC<PanelProps> = ({ pid, ncrId, isQE, onChanged }) =
           </div>
         )}
       </div>
+    </div>
+  );
+};
+
+// ── AI suggestion section ─────────────────────────────────────────────────────
+
+const CONFIDENCE_BADGE: Record<ConfidenceLevel, { variant: 'pass' | 'warn' | 'pending'; label: string }> = {
+  HIGH: { variant: 'pass', label: 'High confidence' },
+  MEDIUM: { variant: 'warn', label: 'Medium confidence' },
+  LOW: { variant: 'pending', label: 'Low confidence' },
+};
+
+interface AIProps {
+  pid: number;
+  ncrId: number;
+  isQE: boolean;
+  isClosed: boolean;
+  onApplied: () => Promise<void>;
+}
+
+const AISuggestionSection: React.FC<AIProps> = ({ pid, ncrId, isQE, isClosed, onApplied }) => {
+  const [suggestion, setSuggestion] = useState<AISuggestionResponse | null>(null);
+  const [showSources, setShowSources] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Best-effort load of any existing suggestion; a 404 (none yet) is not an error.
+  useEffect(() => {
+    let live = true;
+    aiSuggestionsApi
+      .get(pid, ncrId)
+      .then((s) => { if (live) setSuggestion(s); })
+      .catch(() => { /* none generated yet */ });
+    return () => { live = false; };
+  }, [pid, ncrId]);
+
+  const generate = async () => {
+    setError(null);
+    setBusy(true);
+    try {
+      setSuggestion(await aiSuggestionsApi.generate(pid, ncrId));
+    } catch (err) {
+      setError(getApiErrorMessage(err, 'Could not generate a suggestion.'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const apply = async () => {
+    setError(null);
+    setBusy(true);
+    try {
+      await aiSuggestionsApi.apply(pid, ncrId);
+      await onApplied();
+    } catch (err) {
+      setError(getApiErrorMessage(err, 'Could not apply the suggestion.'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Nothing to show for non-QE viewers until a suggestion has been generated.
+  if (!isQE && !suggestion) return null;
+
+  const conf = suggestion?.confidence_level ? CONFIDENCE_BADGE[suggestion.confidence_level] : null;
+
+  return (
+    <div className="qms-ai-suggestion">
+      <div className="qms-ai-suggestion-head">
+        <h4 className="qms-section-heading" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <Sparkles size={15} className="text-primary" /> AI suggestion
+        </h4>
+        {isQE && (
+          <Button
+            size="sm"
+            variant="outline"
+            icon={<Wand2 size={14} />}
+            disabled={busy}
+            onClick={generate}
+          >
+            {busy ? 'Analysing…' : suggestion ? 'Regenerate' : 'Suggest root cause & actions'}
+          </Button>
+        )}
+      </div>
+
+      {error && errorBox(error)}
+
+      {!suggestion ? (
+        <p className="text-muted" style={{ fontSize: 13, margin: '6px 0 0' }}>
+          {isQE
+            ? 'Generate a probable root cause and corrective actions, grounded in similar past resolved NCRs on this project.'
+            : 'No AI suggestion yet.'}
+        </p>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            {conf && <Badge variant={conf.variant}>{conf.label}</Badge>}
+            {suggestion.ndt_recommended && (
+              <Badge variant="fail" icon={<ShieldAlert size={12} />}>NDT / core test recommended</Badge>
+            )}
+            <span className="text-muted" style={{ fontSize: 12 }}>
+              {suggestion.retrieved.length > 0
+                ? `Grounded in ${suggestion.retrieved.length} past NCR${suggestion.retrieved.length > 1 ? 's' : ''}`
+                : 'No similar past NCRs — based on general practice'}
+            </span>
+          </div>
+
+          {suggestion.root_cause_text && (
+            <div>
+              <div className="qms-ai-label">Probable root cause</div>
+              <p style={{ fontSize: 14, margin: '2px 0 0' }}>{suggestion.root_cause_text}</p>
+            </div>
+          )}
+
+          {suggestion.corrective_actions.length > 0 && (
+            <div>
+              <div className="qms-ai-label">Suggested corrective actions</div>
+              <ul style={{ margin: '4px 0 0', paddingLeft: 18, fontSize: 14 }}>
+                {suggestion.corrective_actions.map((a, i) => <li key={i}>{a}</li>)}
+              </ul>
+            </div>
+          )}
+
+          {suggestion.retrieved.length > 0 && (
+            <div>
+              <button
+                type="button"
+                className="qms-ai-sources-toggle"
+                onClick={() => setShowSources((v) => !v)}
+              >
+                {showSources ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                {showSources ? 'Hide' : 'Show'} the {suggestion.retrieved.length} similar past NCR{suggestion.retrieved.length > 1 ? 's' : ''} used
+              </button>
+              {showSources && (
+                <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {suggestion.retrieved.map((r) => (
+                    <div key={r.ncr_id} className="qms-ai-source">
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                        <span className="font-medium text-primary">{r.ncr_number ?? `NCR-${r.ncr_id}`}</span>
+                        <span className="text-muted" style={{ fontSize: 12 }}>
+                          {Math.round(r.similarity * 100)}% match{r.grade_name ? ` · ${r.grade_name}` : ''}
+                        </span>
+                      </div>
+                      {r.root_cause && <div style={{ fontSize: 13, marginTop: 2 }}>{r.root_cause}</div>}
+                      {r.corrective_actions.length > 0 && (
+                        <div className="text-muted" style={{ fontSize: 12, marginTop: 2 }}>
+                          Fixed by: {r.corrective_actions.join('; ')}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {isQE && !isClosed && (suggestion.root_cause_text || suggestion.corrective_actions.length > 0) && (
+            <div>
+              <Button size="sm" variant="primary" disabled={busy} onClick={apply}>
+                Apply to this NCR
+              </Button>
+              <span className="text-muted" style={{ fontSize: 12, marginLeft: 10 }}>
+                Copies the root cause and adds the actions — you can edit them after.
+              </span>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };
