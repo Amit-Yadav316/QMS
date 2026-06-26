@@ -21,7 +21,14 @@ from app.models.master import (
     TestingLab,
     Tower,
 )
-from app.models.quality import NCR, AISuggestion, CorrectiveAction, CubeTest, Penalty
+from app.models.quality import (
+    NCR,
+    AISuggestion,
+    CorrectiveAction,
+    CubeTest,
+    NCREmbedding,
+    Penalty,
+)
 from app.models.transaction import CubeSample, Pour, PourDispatchLink, RMCDispatch, TruckDispatch
 
 __all__ = [
@@ -30,6 +37,6 @@ __all__ = [
     "Project", "ProjectContractor", "Tower", "Floor", "Component",
     "Grade", "GradeThreshold", "Supplier", "MixDesign", "TestingLab", "Document",
     "Pour", "RMCDispatch", "TruckDispatch", "PourDispatchLink", "CubeSample",
-    "CubeTest", "NCR", "Penalty", "CorrectiveAction", "AISuggestion",
+    "CubeTest", "NCR", "Penalty", "CorrectiveAction", "AISuggestion", "NCREmbedding",
     "AuditLog", "IngestionLog", "Embedding",
 ]

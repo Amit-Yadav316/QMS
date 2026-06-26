@@ -7,10 +7,12 @@ import enum
 from datetime import date, datetime
 
 from sqlalchemy import (
+    ARRAY,
     BigInteger,
     Boolean,
     Date,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -233,6 +235,38 @@ class AISuggestion(Base):
 
     ncr: Mapped["NCR"] = relationship("NCR", back_populates="ai_suggestion")
     cube_test: Mapped["CubeTest"] = relationship("CubeTest", back_populates="ai_suggestion")
+
+
+class NCREmbedding(Base):
+    """Cached embedding of a CLOSED NCR's resolved-case text (Phase 9 RAG corpus).
+
+    One row per NCR, embedded from ``source_text`` (the NCR's failure context +
+    its recorded root cause + corrective actions). The vector is stored as a
+    plain ``double precision[]`` and similarity is computed in Python — the
+    per-project corpus is small, so there is no need for pgvector. ``source_text``
+    is kept so the cache can be invalidated (re-embedded) if a reopened NCR's
+    resolution changes; ``model``/``dim`` record what produced the vector.
+    """
+    __tablename__ = "ncr_embeddings"
+    __table_args__ = (
+        Index("idx_ncr_embedding_ncr", "ncr_id", unique=True),
+        {"schema": "quality"},
+    )
+
+    embedding_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    ncr_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("quality.ncrs.ncr_id"), nullable=False, unique=True
+    )
+    model: Mapped[str] = mapped_column(String(100), nullable=False)
+    dim: Mapped[int] = mapped_column(Integer, nullable=False)
+    vector: Mapped[list[float]] = mapped_column(ARRAY(Float), nullable=False)
+    source_text: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
 
 
 from app.models.transaction import CubeSample  # noqa: E402
