@@ -10,6 +10,7 @@ from app.models.auth import (
 )
 from app.models.master import (
     Component,
+    Document,
     Floor,
     Grade,
     GradeThreshold,
@@ -27,7 +28,7 @@ __all__ = [
     "Organisation", "User", "ProjectTeam", "ProjectMember", "OrgInvitation",
     "TokenBlacklist", "EmailOtp",
     "Project", "ProjectContractor", "Tower", "Floor", "Component",
-    "Grade", "GradeThreshold", "Supplier", "MixDesign", "TestingLab",
+    "Grade", "GradeThreshold", "Supplier", "MixDesign", "TestingLab", "Document",
     "Pour", "RMCDispatch", "TruckDispatch", "PourDispatchLink", "CubeSample",
     "CubeTest", "NCR", "Penalty", "CorrectiveAction", "AISuggestion",
     "AuditLog", "IngestionLog", "Embedding",

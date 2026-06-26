@@ -10,6 +10,7 @@ from app.routers import (
     cube_tests,
     dispatch_token,
     dispatches,
+    documents,
     floors,
     labs,
     mix_designs,
@@ -65,6 +66,7 @@ def create_app() -> FastAPI:
     app.include_router(ncrs.router, prefix=settings.API_V1_PREFIX)
     app.include_router(analytics.router, prefix=settings.API_V1_PREFIX)
     app.include_router(traceability.router, prefix=settings.API_V1_PREFIX)
+    app.include_router(documents.router, prefix=settings.API_V1_PREFIX)
 
     return app
 

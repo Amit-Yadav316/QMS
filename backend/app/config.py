@@ -13,6 +13,11 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     API_V1_PREFIX: str = "/api/v1"
 
+    # File uploads (document store). UPLOAD_DIR is the local storage root today;
+    # the storage layer is object-store-swappable later (see core/storage.py).
+    UPLOAD_DIR: str = "uploads"
+    MAX_UPLOAD_BYTES: int = 26_214_400  # 25 MB
+
     # JWT
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
