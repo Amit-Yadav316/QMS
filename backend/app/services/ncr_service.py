@@ -16,6 +16,7 @@ without extra lookups.
 
 from datetime import UTC, datetime
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NCRStateError, NotFoundError
@@ -54,6 +55,14 @@ _ALLOWED_TRANSITIONS: dict[NCRStatus, set[NCRStatus]] = {
 }
 
 
+def _group_by_ncr(items: list) -> dict[int, list]:
+    """Bucket corrective actions / penalties by their ncr_id in one pass."""
+    grouped: dict[int, list] = {}
+    for item in items:
+        grouped.setdefault(item.ncr_id, []).append(item)
+    return grouped
+
+
 class NCRService:
     def __init__(self, session: AsyncSession):
         self.session = session
@@ -66,16 +75,48 @@ class NCRService:
     async def list_ncrs(self, project: Project) -> list[NCRResponse]:
         ncrs = await self.ncrs.list_for_project(project.project_id)
         ids = [n.ncr_id for n in ncrs]
-        actions = await self.actions.list_for_ncrs(ids)
-        penalties = await self.penalties.list_for_ncrs(ids)
-        return [
-            await self._summary(
-                n,
-                actions=[a for a in actions if a.ncr_id == n.ncr_id],
-                penalties=[p for p in penalties if p.ncr_id == n.ncr_id],
+        actions_by = _group_by_ncr(await self.actions.list_for_ncrs(ids))
+        penalties_by = _group_by_ncr(await self.penalties.list_for_ncrs(ids))
+
+        # Batch-load the denormalisation context in a handful of queries rather
+        # than the ~8 per-NCR session.get calls the detail path uses (avoids N+1).
+        tests = await self._bulk(CubeTest, CubeTest.test_id, (n.test_id for n in ncrs))
+        samples = await self._bulk(
+            CubeSample, CubeSample.sample_id, (t.sample_id for t in tests.values())
+        )
+        pours = await self._bulk(Pour, Pour.pour_id, (n.pour_id for n in ncrs))
+        towers = await self._bulk(Tower, Tower.tower_id, (p.tower_id for p in pours.values()))
+        floors = await self._bulk(Floor, Floor.floor_id, (p.floor_id for p in pours.values()))
+        components = await self._bulk(
+            Component, Component.component_id, (p.component_id for p in pours.values())
+        )
+        grades = await self._bulk(Grade, Grade.grade_id, (p.grade_id for p in pours.values()))
+        users = await self._bulk(User, User.user_id, (n.raised_by for n in ncrs))
+
+        summaries: list[NCRResponse] = []
+        for n in ncrs:
+            test = tests.get(n.test_id)
+            sample = samples.get(test.sample_id) if test else None
+            pour = pours.get(n.pour_id)
+            tower = towers.get(pour.tower_id) if pour else None
+            floor = floors.get(pour.floor_id) if pour else None
+            component = components.get(pour.component_id) if pour else None
+            grade = grades.get(pour.grade_id) if pour else None
+            user = users.get(n.raised_by) if n.raised_by is not None else None
+            fields = self._build_fields(
+                n, test=test, sample=sample, tower=tower, floor=floor,
+                component=component, grade=grade,
+                raised_by_name=getattr(user, "full_name", None) if user else None,
             )
-            for n in ncrs
-        ]
+            summaries.append(
+                NCRResponse(
+                    **fields,
+                    **self._counts(
+                        actions_by.get(n.ncr_id, []), penalties_by.get(n.ncr_id, [])
+                    ),
+                )
+            )
+        return summaries
 
     async def get_ncr(self, project: Project, ncr_id: int) -> NCRDetailResponse:
         ncr = await self._require(project, ncr_id)
@@ -89,6 +130,9 @@ class NCRService:
         ncr = await self._require(project, ncr_id)
 
         if data.root_cause is not None:
+            # A closed NCR is frozen — reopen it before amending the root cause,
+            # the same rule that guards corrective actions and penalties.
+            self._ensure_mutable(ncr)
             ncr.root_cause = data.root_cause.strip() or None
 
         if data.status is not None and data.status != ncr.status:
@@ -189,10 +233,10 @@ class NCRService:
 
     @staticmethod
     def _ensure_mutable(ncr: NCR) -> None:
+        """A CLOSED NCR is frozen — root cause, corrective actions and penalties
+        can only change after it is reopened."""
         if ncr.status == NCRStatus.CLOSED:
-            raise NCRStateError(
-                "Reopen this NCR before changing its corrective actions or penalties"
-            )
+            raise NCRStateError("Reopen this NCR before modifying it")
 
     async def _validate_user(self, user_id: int | None) -> None:
         if user_id is None:
@@ -206,7 +250,21 @@ class NCRService:
         u = await self.session.get(User, user_id)
         return getattr(u, "full_name", None) if u else None
 
-    async def _base_fields(self, ncr: NCR) -> dict:
+    async def _bulk(self, model, pk_col, ids) -> dict:
+        """Load `model` rows for the given ids in one query, keyed by primary key.
+        Powers the list path's batch denormalisation (vs per-row session.get)."""
+        wanted = {i for i in ids if i is not None}
+        if not wanted:
+            return {}
+        rows = (
+            await self.session.execute(select(model).where(pk_col.in_(wanted)))
+        ).scalars().all()
+        key = pk_col.key
+        return {getattr(r, key): r for r in rows}
+
+    async def _resolve_one(self, ncr: NCR) -> dict:
+        """Denormalised fields for a single NCR via one-off lookups — fine for
+        the detail endpoint; the list endpoint batch-loads instead (see _bulk)."""
         test = await self.session.get(CubeTest, ncr.test_id)
         sample = await self.session.get(CubeSample, test.sample_id) if test else None
         pour = await self.session.get(Pour, ncr.pour_id)
@@ -214,6 +272,18 @@ class NCRService:
         floor = await self.session.get(Floor, pour.floor_id) if pour else None
         component = await self.session.get(Component, pour.component_id) if pour else None
         grade = await self.session.get(Grade, pour.grade_id) if pour else None
+        return self._build_fields(
+            ncr, test=test, sample=sample, tower=tower, floor=floor,
+            component=component, grade=grade,
+            raised_by_name=await self._user_name(ncr.raised_by),
+        )
+
+    @staticmethod
+    def _build_fields(
+        ncr: NCR, *, test, sample, tower, floor, component, grade, raised_by_name
+    ) -> dict:
+        """Assemble the denormalised NCRResponse fields from already-loaded rows
+        (pure — no I/O), shared by the single and batch paths."""
         return dict(
             ncr_id=ncr.ncr_id,
             ncr_number=ncr.ncr_number,
@@ -222,7 +292,7 @@ class NCRService:
             status=ncr.status,
             root_cause=ncr.root_cause,
             raised_by=ncr.raised_by,
-            raised_by_name=await self._user_name(ncr.raised_by),
+            raised_by_name=raised_by_name,
             raised_at=ncr.raised_at,
             closed_at=ncr.closed_at,
             result_status=test.result_status if test else None,
@@ -246,23 +316,11 @@ class NCRService:
             penalty_count=len(penalties),
         )
 
-    async def _summary(
-        self,
-        ncr: NCR,
-        *,
-        actions: list[CorrectiveAction],
-        penalties: list[Penalty],
-    ) -> NCRResponse:
-        return NCRResponse(
-            **await self._base_fields(ncr),
-            **self._counts(actions, penalties),
-        )
-
     async def _detail(self, ncr: NCR) -> NCRDetailResponse:
         actions = await self.actions.list_for_ncr(ncr.ncr_id)
         penalties = await self.penalties.list_for_ncr(ncr.ncr_id)
         return NCRDetailResponse(
-            **await self._base_fields(ncr),
+            **await self._resolve_one(ncr),
             **self._counts(actions, penalties),
             corrective_actions=[await self._action_response(a) for a in actions],
             penalties=[await self._penalty_response(p) for p in penalties],

@@ -28,7 +28,7 @@ import { ProjectLabs } from './pages/project/ProjectLabs';
 import { ProjectMixDesigns } from './pages/project/ProjectMixDesigns';
 import { ProjectFloors } from './pages/project/ProjectFloors';
 import { Analytics } from './pages/Analytics';
-import { DocumentManagement } from './pages/DocumentManagement';
+import { ProjectDocuments } from './pages/project/ProjectDocuments';
 import { AuditManagement } from './pages/AuditManagement';
 import { Traceability } from './pages/Traceability';
 import { PourCardForm } from './pages/PourCardForm';
@@ -67,7 +67,7 @@ function App() {
             <Route path="projects/:projectId" element={<ProjectLayout />}>
               <Route index element={<ProjectOverview />} />
               <Route path="analytics" element={<Analytics />} />
-              <Route path="documents" element={<DocumentManagement />} />
+              <Route path="documents" element={<ProjectDocuments />} />
               <Route path="audits" element={<AuditManagement />} />
               <Route path="trace" element={<Traceability />} />
               <Route path="pours" element={<ProjectPours />} />

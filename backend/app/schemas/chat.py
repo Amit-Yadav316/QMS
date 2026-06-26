@@ -1,0 +1,12 @@
+"""chat.py — analyst-agent chat DTOs."""
+
+from pydantic import BaseModel, Field
+
+
+class ChatRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=2000)
+
+
+class ChatResponse(BaseModel):
+    answer: str
+    tools_used: list[str] = []

@@ -130,6 +130,24 @@ class TestNCRLifecycle:
         assert resp.json()["status"] == "UNDER_REVIEW"
         assert resp.json()["closed_at"] is None
 
+    async def test_cannot_edit_root_cause_of_closed_ncr(self, client, db_session):
+        """A CLOSED NCR is frozen — its root cause can't be amended without
+        reopening (mirrors the corrective-action/penalty freeze)."""
+        _, qe_token, pid, ncr_id = await _open_ncr(client, db_session)
+        await _patch_ncr(
+            client, qe_token, pid, ncr_id, status="UNDER_REVIEW", root_cause="Low cement"
+        )
+        await _patch_ncr(client, qe_token, pid, ncr_id, status="CLOSED")
+
+        blocked = await _patch_ncr(client, qe_token, pid, ncr_id, root_cause="amended")
+        assert blocked.status_code == 400, blocked.text
+
+        # Reopening makes it editable again.
+        await _patch_ncr(client, qe_token, pid, ncr_id, status="UNDER_REVIEW")
+        ok = await _patch_ncr(client, qe_token, pid, ncr_id, root_cause="amended")
+        assert ok.status_code == 200, ok.text
+        assert ok.json()["root_cause"] == "amended"
+
     async def test_non_qe_cannot_update_ncr(self, client, db_session):
         contractor_token, _, pid, ncr_id = await _open_ncr(client, db_session)
         resp = await _patch_ncr(

@@ -57,6 +57,9 @@ build/
 !.env.sample
 !.env.example
 
+# ── Uploaded files (document store — local storage backend) ──
+uploads/
+
 # ── Project-specific design / reference files ──
 figma promt forms.md
 qms_complete.html

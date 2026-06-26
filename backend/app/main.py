@@ -3,12 +3,15 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.routers import (
+    analytics,
     auth,
     catalog,
+    chatbot,
     confirmations,
     cube_tests,
     dispatch_token,
     dispatches,
+    documents,
     floors,
     labs,
     mix_designs,
@@ -16,6 +19,7 @@ from app.routers import (
     pours,
     projects,
     suppliers,
+    traceability,
 )
 
 
@@ -61,6 +65,10 @@ def create_app() -> FastAPI:
     app.include_router(dispatch_token.router, prefix=settings.API_V1_PREFIX)
     app.include_router(cube_tests.router, prefix=settings.API_V1_PREFIX)
     app.include_router(ncrs.router, prefix=settings.API_V1_PREFIX)
+    app.include_router(analytics.router, prefix=settings.API_V1_PREFIX)
+    app.include_router(traceability.router, prefix=settings.API_V1_PREFIX)
+    app.include_router(documents.router, prefix=settings.API_V1_PREFIX)
+    app.include_router(chatbot.router, prefix=settings.API_V1_PREFIX)
 
     return app
 
