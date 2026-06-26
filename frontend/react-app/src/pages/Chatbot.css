@@ -208,3 +208,48 @@
   font-size: 11px;
   color: var(--gray-600);
 }
+
+/* Tool chips shown under an assistant answer (which data it consulted). */
+.qms-msg-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.qms-tool-chip {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--blue);
+  background: var(--blue-light);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
+.qms-message-bubble--thinking {
+  color: var(--gray-500);
+  font-style: italic;
+}
+
+/* Clickable suggested questions in the side panel. */
+.qms-suggestion {
+  text-align: left;
+  font-size: 13px;
+  color: var(--gray-800);
+  background: #fff;
+  border: 1px solid var(--gray-200);
+  border-radius: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.qms-suggestion:hover:not(:disabled) {
+  border-color: var(--blue);
+  background: var(--blue-light);
+}
+
+.qms-suggestion:disabled {
+  opacity: 0.6;
+  cursor: default;
+}

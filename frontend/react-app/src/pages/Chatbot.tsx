@@ -1,24 +1,67 @@
-import React, { useState } from 'react';
-import { Card } from '../components/ui/Card';
-import { Send, Bot, User, Search, Paperclip } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Send, Bot, User, Sparkles } from 'lucide-react';
+import { useProject } from '../components/layout/ProjectLayout';
+import { chatApi } from '../api/chat';
+import { getApiErrorMessage } from '../api/client';
 import './Chatbot.css';
 
+interface Msg {
+  role: 'user' | 'assistant';
+  text: string;
+  tools?: string[];
+}
+
+const TOOL_LABEL: Record<string, string> = {
+  get_overview_kpis: 'Overview KPIs',
+  get_quality_analytics: 'Quality analytics',
+  get_supplier_scorecard: 'Supplier scorecard',
+  search_traceability: 'Traceability search',
+  trace_sample: 'Sample lineage',
+  list_ncrs: 'NCRs',
+};
+
+const SUGGESTIONS = [
+  'How is the project doing overall?',
+  'Which supplier has the best pass rate?',
+  'List the open NCRs.',
+  'Show the cube pass rate by grade.',
+];
+
 export const Chatbot: React.FC = () => {
-  const [messages, setMessages] = useState([
-    { role: 'assistant', text: 'Hello! I am your Strata Assistant. I can analyze test results, trace pours, and explain quality parameters. What would you like to know?' }
+  const { project } = useProject();
+  const pid = project.project_id;
+
+  const [messages, setMessages] = useState<Msg[]>([
+    {
+      role: 'assistant',
+      text: `Hi! I can answer questions about ${project.project_name} — pours, cube tests, NCRs, suppliers and traceability. Ask away.`,
+    },
   ]);
   const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const endRef = useRef<HTMLDivElement>(null);
 
-  const handleSend = () => {
-    if (!input.trim()) return;
-    
-    setMessages(prev => [...prev, { role: 'user', text: input }]);
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, loading]);
+
+  const send = async (text: string) => {
+    const q = text.trim();
+    if (!q || loading) return;
+    setMessages((p) => [...p, { role: 'user', text: q }]);
     setInput('');
-    
-    // Simulate thinking
-    setTimeout(() => {
-      setMessages(prev => [...prev, { role: 'assistant', text: 'Based on the tracebility records for PRJ-2024-001, the failed cube (RES-2024-1045) was linked to Pour Card PC-T1-5F-SLB-20240601-001. The pour was executed by L&T and the concrete was supplied by UltraTech Whitefield plant. Notably, Truck 7 (KA-05-AB-1240) had an extended transit time of 98 minutes and 12L of water was added at site.' }]);
-    }, 1500);
+    setLoading(true);
+    try {
+      const res = await chatApi.ask(pid, q);
+      setMessages((p) => [...p, { role: 'assistant', text: res.answer, tools: res.tools_used }]);
+    } catch (err) {
+      setMessages((p) => [
+        ...p,
+        { role: 'assistant', text: getApiErrorMessage(err, 'Sorry — I could not answer that.') },
+      ]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -28,8 +71,8 @@ export const Chatbot: React.FC = () => {
           <div className="qms-chat-title">
             <Bot className="qms-bot-icon" size={24} />
             <div>
-              <h2>Strata AI Assistant</h2>
-              <p>Powered by RAG — Context-aware project querying</p>
+              <h2>Project Analyst</h2>
+              <p>Answers from this project&apos;s live quality data</p>
             </div>
           </div>
         </div>
@@ -42,47 +85,56 @@ export const Chatbot: React.FC = () => {
               </div>
               <div className="qms-message-bubble">
                 {msg.text}
+                {msg.tools && msg.tools.length > 0 && (
+                  <div className="qms-msg-tools">
+                    {msg.tools.map((t, j) => (
+                      <span key={j} className="qms-tool-chip">{TOOL_LABEL[t] ?? t}</span>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           ))}
+          {loading && (
+            <div className="qms-message qms-message--assistant">
+              <div className="qms-message-avatar"><Bot size={18} /></div>
+              <div className="qms-message-bubble qms-message-bubble--thinking">Analysing…</div>
+            </div>
+          )}
+          <div ref={endRef} />
         </div>
 
         <div className="qms-chat-input-area">
           <div className="qms-input-box">
-            <button className="qms-icon-btn"><Paperclip size={18} /></button>
-            <input 
-              type="text" 
-              placeholder="Ask about pour cards, lab results, or NCRs..." 
+            <input
+              type="text"
+              placeholder="Ask about pours, lab results, suppliers or NCRs…"
               value={input}
-              onChange={e => setInput(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleSend()}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && void send(input)}
+              disabled={loading}
             />
-            <button className="qms-send-btn" onClick={handleSend}><Send size={18} /></button>
+            <button
+              className="qms-send-btn"
+              onClick={() => void send(input)}
+              disabled={loading || !input.trim()}
+            >
+              <Send size={18} />
+            </button>
           </div>
         </div>
       </div>
 
       <div className="qms-chatbot-context">
-        <h3 className="qms-context-title"><Search size={16} /> Reference Context</h3>
-        <p className="qms-context-desc">The AI is currently retrieving information from the following records:</p>
-        
-        <Card className="qms-context-card" padding="sm">
-          <div className="qms-ctx-type">POUR CARD</div>
-          <div className="qms-ctx-id">PC-T1-5F-SLB-20240601-001</div>
-          <div className="qms-ctx-meta">01-Jun-2024 · 210 m³</div>
-        </Card>
-        
-        <Card className="qms-context-card" padding="sm">
-          <div className="qms-ctx-type">CUBE RESULT</div>
-          <div className="qms-ctx-id">RES-2024-1045</div>
-          <div className="qms-ctx-meta">FAIL · 37.2 MPa · ENVTECH</div>
-        </Card>
-        
-        <Card className="qms-context-card" padding="sm">
-          <div className="qms-ctx-type">NCR</div>
-          <div className="qms-ctx-id">NCR-2024-015</div>
-          <div className="qms-ctx-meta">High Severity · Open</div>
-        </Card>
+        <h3 className="qms-context-title"><Sparkles size={16} /> Try asking</h3>
+        <p className="qms-context-desc">
+          The analyst reads this project&apos;s live data — it won&apos;t make up numbers.
+        </p>
+        {SUGGESTIONS.map((s, i) => (
+          <button key={i} className="qms-suggestion" onClick={() => void send(s)} disabled={loading}>
+            {s}
+          </button>
+        ))}
       </div>
     </div>
   );
