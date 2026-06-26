@@ -18,6 +18,12 @@ class Settings(BaseSettings):
     UPLOAD_DIR: str = "uploads"
     MAX_UPLOAD_BYTES: int = 26_214_400  # 25 MB
 
+    # AI analyst agent (Phase 8) — local Ollama behind a swappable LLM client.
+    OLLAMA_BASE_URL: str = "http://localhost:11434"
+    OLLAMA_MODEL: str = "qwen2.5:3b"
+    AGENT_MAX_ITERATIONS: int = 4
+    AGENT_TIMEOUT_SECONDS: int = 120
+
     # JWT
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7

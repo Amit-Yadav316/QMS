@@ -6,6 +6,7 @@ from app.routers import (
     analytics,
     auth,
     catalog,
+    chatbot,
     confirmations,
     cube_tests,
     dispatch_token,
@@ -67,6 +68,7 @@ def create_app() -> FastAPI:
     app.include_router(analytics.router, prefix=settings.API_V1_PREFIX)
     app.include_router(traceability.router, prefix=settings.API_V1_PREFIX)
     app.include_router(documents.router, prefix=settings.API_V1_PREFIX)
+    app.include_router(chatbot.router, prefix=settings.API_V1_PREFIX)
 
     return app
 
