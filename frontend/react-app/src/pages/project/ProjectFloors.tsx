@@ -3,17 +3,18 @@
 // project setup (TowerResponse.floors_total). Pour cards need floors to exist
 // here before a floor can be selected.
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Plus } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
 import { Select } from '../../components/ui/Select';
 import { Button } from '../../components/ui/Button';
+import { ErrorBox } from '../../components/ui/ErrorBox';
 import { useProject } from '../../components/layout/ProjectLayout';
-import { projectsApi } from '../../api/projects';
-import { floorsApi } from '../../api/floors';
 import { getApiErrorMessage } from '../../api/client';
-import type { FloorResponse, TowerResponse } from '../../types/master';
+import { toast } from '../../lib/toast';
+import { useFloors, useGenerateFloors, useProjectTowers } from '../../queries/floors';
+import './ProjectFloors.css';
 
 export const ProjectFloors: React.FC = () => {
   const { project } = useProject();
@@ -21,17 +22,19 @@ export const ProjectFloors: React.FC = () => {
   const canManage =
     project.access.can_manage_client_side || project.access.can_manage_contractor_side;
 
-  const [towers, setTowers] = useState<TowerResponse[]>([]);
+  const towersQuery = useProjectTowers(pid);
+  const towers = useMemo(() => towersQuery.data ?? [], [towersQuery.data]);
+
   const [towerId, setTowerId] = useState('');
-  const [floors, setFloors] = useState<FloorResponse[]>([]);
-  const [loadingTowers, setLoadingTowers] = useState(true);
-  const [loadingFloors, setLoadingFloors] = useState(false);
   const [prefix, setPrefix] = useState('L');
   const [count, setCount] = useState('');
-  const [submitting, setSubmitting] = useState(false);
   const [showForm, setShowForm] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
+
+  const floorsQuery = useFloors(pid, towerId ? Number(towerId) : null);
+  const floors = useMemo(() => floorsQuery.data ?? [], [floorsQuery.data]);
+  const generate = useGenerateFloors(pid);
+
+  const loadError = towersQuery.error ?? floorsQuery.error;
 
   // Contractor-side managers only set up floors for their allotted towers.
   const visibleTowers = useMemo(() => {
@@ -49,43 +52,10 @@ export const ProjectFloors: React.FC = () => {
   const remaining = cap != null ? Math.max(0, cap - floors.length) : null;
   const atCapacity = remaining === 0;
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setLoadingTowers(true);
-      try {
-        const tw = await projectsApi.towers(pid);
-        if (cancelled) return;
-        setTowers(tw);
-      } catch (err) {
-        if (!cancelled) setError(getApiErrorMessage(err, 'Unable to load towers.'));
-      } finally {
-        if (!cancelled) setLoadingTowers(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [pid]);
-
   // Default to the first tower the viewer can actually see.
   useEffect(() => {
     if (!towerId && visibleTowers.length) setTowerId(String(visibleTowers[0].tower_id));
   }, [visibleTowers, towerId]);
-
-  const loadFloors = useCallback(async (tid: number) => {
-    setLoadingFloors(true);
-    try {
-      setFloors(await floorsApi.list(pid, tid));
-    } catch (err) {
-      setError(getApiErrorMessage(err, 'Unable to load floors.'));
-    } finally {
-      setLoadingFloors(false);
-    }
-  }, [pid]);
-
-  useEffect(() => {
-    if (towerId) void loadFloors(Number(towerId));
-    else setFloors([]);
-  }, [towerId, loadFloors]);
 
   // Default the count to "fill up to the cap" whenever the tower/floors change.
   useEffect(() => {
@@ -96,44 +66,36 @@ export const ProjectFloors: React.FC = () => {
     e.preventDefault();
     if (!towerId) return;
     const n = Number(count);
-    if (!Number.isInteger(n) || n <= 0) { setError('Enter how many floors to add.'); return; }
+    if (!Number.isInteger(n) || n <= 0) { toast.error('Enter how many floors to add.'); return; }
     if (remaining != null && n > remaining) {
-      setError(`This tower allows ${cap} floors — only ${remaining} more can be added.`);
+      toast.error(`This tower allows ${cap} floors — only ${remaining} more can be added.`);
       return;
     }
-    setError(null); setSuccess(null); setSubmitting(true);
     // Continue numbering after the highest existing floor so labels don't clash.
     const start = floors.length
       ? Math.max(...floors.map((f) => f.floor_number ?? 0)) + 1
       : 1;
     try {
-      const created = await floorsApi.generate(pid, Number(towerId), {
-        count: n,
-        start_number: start,
-        label_prefix: prefix.trim() || 'L',
+      const created = await generate.mutateAsync({
+        towerId: Number(towerId),
+        data: { count: n, start_number: start, label_prefix: prefix.trim() || 'L' },
       });
-      setSuccess(`Added ${created.length} floor${created.length === 1 ? '' : 's'} to ${tower?.tower_name ?? 'the tower'}.`);
+      toast.success(`Added ${created.length} floor${created.length === 1 ? '' : 's'} to ${tower?.tower_name ?? 'the tower'}.`);
       setShowForm(false);
-      await loadFloors(Number(towerId));
     } catch (err) {
-      setError(getApiErrorMessage(err, 'Unable to add floors.'));
-    } finally {
-      setSubmitting(false);
+      toast.error(getApiErrorMessage(err, 'Unable to add floors.'));
     }
   };
 
-  const alert: React.CSSProperties = { padding: '12px 16px', borderRadius: 8, marginBottom: 16, fontSize: 14 };
-
   return (
     <div>
-      {error && <div style={{ ...alert, background: '#FEE2E2', color: '#991B1B', border: '1px solid #FCA5A5' }}>{error}</div>}
-      {success && <div style={{ ...alert, background: '#DCFCE7', color: '#166534', border: '1px solid #86EFAC' }}>{success}</div>}
+      {loadError && <ErrorBox>{getApiErrorMessage(loadError, 'Unable to load towers or floors.')}</ErrorBox>}
 
-      {loadingTowers ? (
+      {towersQuery.isPending ? (
         <p className="text-muted qms-text-sm">Loading towers…</p>
       ) : visibleTowers.length === 0 ? (
         <Card className="qms-form-section">
-          <p className="text-muted" style={{ fontSize: 14, margin: 0 }}>
+          <p className="text-muted qms-floors-msg">
             {towers.length === 0
               ? 'This project has no towers. Add towers in project setup first, then come back to add their floors.'
               : 'You have no towers assigned on this project yet.'}
@@ -142,8 +104,8 @@ export const ProjectFloors: React.FC = () => {
       ) : (
         <>
           <Card className="qms-form-section">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
-              <h3 className="qms-section-heading-plain" style={{ margin: 0 }}>Tower floors</h3>
+            <div className="qms-floors-head">
+              <h3 className="qms-section-heading-plain">Tower floors</h3>
               {canManage && !showForm && (
                 <Button variant="primary" size="sm" icon={<Plus size={15} />} disabled={atCapacity} onClick={() => setShowForm(true)}>
                   Add floors
@@ -160,8 +122,8 @@ export const ProjectFloors: React.FC = () => {
                   value: t.tower_id,
                 }))}
               />
-              <div style={{ display: 'flex', alignItems: 'flex-end' }}>
-                <p className="qms-text-sm text-muted" style={{ margin: 0 }}>
+              <div className="qms-field-end">
+                <p className="qms-text-sm text-muted">
                   {floors.length} floor{floors.length === 1 ? '' : 's'} created
                   {cap != null ? ` of ${cap} allowed` : ''}
                   {remaining != null && remaining > 0 ? ` · ${remaining} more can be added` : ''}
@@ -170,13 +132,13 @@ export const ProjectFloors: React.FC = () => {
             </div>
 
             {canManage && atCapacity && !showForm && (
-              <p className="qms-text-sm text-muted" style={{ marginTop: 12, marginBottom: 0 }}>
+              <p className="qms-text-sm text-muted qms-floors-cap-note">
                 All {cap} floors for this tower have been created.
               </p>
             )}
 
             {canManage && showForm && (
-              <form onSubmit={handleGenerate} className="qms-grid-2" style={{ marginTop: 16 }}>
+              <form onSubmit={handleGenerate} className="qms-grid-2 qms-floors-form">
                 <Input
                   label="Floor label prefix"
                   value={prefix}
@@ -192,11 +154,11 @@ export const ProjectFloors: React.FC = () => {
                   onChange={(e) => setCount(e.target.value)}
                   disabled={atCapacity}
                 />
-                <div style={{ gridColumn: 'span 2', display: 'flex', gap: 8 }}>
-                  <Button type="submit" variant="primary" disabled={submitting || atCapacity} icon={<Plus size={16} />}>
-                    {submitting ? 'Adding…' : 'Generate floors'}
+                <div className="qms-form-actions qms-grid-span-2">
+                  <Button type="submit" variant="primary" disabled={generate.isPending || atCapacity} icon={<Plus size={16} />}>
+                    {generate.isPending ? 'Adding…' : 'Generate floors'}
                   </Button>
-                  <Button type="button" variant="ghost" disabled={submitting} onClick={() => setShowForm(false)}>
+                  <Button type="button" variant="ghost" disabled={generate.isPending} onClick={() => setShowForm(false)}>
                     Cancel
                   </Button>
                 </div>
@@ -209,22 +171,14 @@ export const ProjectFloors: React.FC = () => {
               <h3 className="qms-section-heading-plain">Floors in {tower?.tower_name ?? 'this tower'}</h3>
             </div>
             <div className="qms-p-4">
-              {loadingFloors ? (
-                <p className="text-muted qms-text-sm" style={{ margin: 0 }}>Loading…</p>
+              {floorsQuery.isPending ? (
+                <p className="text-muted qms-floors-msg">Loading…</p>
               ) : floors.length === 0 ? (
-                <p className="text-muted qms-text-sm" style={{ margin: 0 }}>No floors yet — use “Add floors” above.</p>
+                <p className="text-muted qms-floors-msg">No floors yet — use “Add floors” above.</p>
               ) : (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                <div className="qms-floor-chips">
                   {floors.map((f) => (
-                    <span
-                      key={f.floor_id}
-                      style={{
-                        padding: '6px 12px', borderRadius: 8, fontSize: 13,
-                        border: '1px solid var(--gray-200)', background: 'var(--gray-50, #F9FAFB)',
-                      }}
-                    >
-                      {f.floor_label}
-                    </span>
+                    <span key={f.floor_id} className="qms-floor-chip">{f.floor_label}</span>
                   ))}
                 </div>
               )}

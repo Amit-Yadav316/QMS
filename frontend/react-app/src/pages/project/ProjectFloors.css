@@ -1,0 +1,35 @@
+.qms-floors-msg {
+  font-size: 14px;
+  margin: 0;
+}
+
+.qms-floors-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.qms-floors-cap-note {
+  margin: 12px 0 0;
+}
+
+.qms-floors-form {
+  margin-top: 16px;
+}
+
+.qms-floor-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.qms-floor-chip {
+  padding: 6px 12px;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  border: 1px solid var(--gray-200);
+  background: var(--gray-50);
+}
