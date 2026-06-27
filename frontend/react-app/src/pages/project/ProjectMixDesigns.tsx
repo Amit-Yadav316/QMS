@@ -1,22 +1,18 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { Plus } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
 import { Select } from '../../components/ui/Select';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
+import { ErrorBox } from '../../components/ui/ErrorBox';
 import { useProject } from '../../components/layout/ProjectLayout';
-import { mixDesignsApi } from '../../api/mixDesigns';
-import { suppliersApi } from '../../api/suppliers';
-import { catalogApi } from '../../api/catalog';
 import { getApiErrorMessage } from '../../api/client';
-import type {
-  GradeResponse,
-  MixApprovalStatus,
-  MixDesignCreate,
-  MixDesignResponse,
-  SupplierResponse,
-} from '../../types/master';
+import { toast } from '../../lib/toast';
+import { useCreateMixDesign, useMixDesigns } from '../../queries/mixDesigns';
+import { useSuppliers } from '../../queries/suppliers';
+import { useGrades } from '../../queries/catalog';
+import type { MixApprovalStatus, MixDesignCreate } from '../../types/master';
 
 const APPROVAL_VARIANT: Record<MixApprovalStatus, 'pass' | 'fail' | 'warn'> = {
   APPROVED: 'pass', REJECTED: 'fail', IN_PROGRESS: 'warn',
@@ -36,42 +32,19 @@ export const ProjectMixDesigns: React.FC = () => {
   const pid = project.project_id;
   const canManage = project.access.can_manage_contractor_side;
 
-  const [rows, setRows] = useState<MixDesignResponse[]>([]);
-  const [suppliers, setSuppliers] = useState<SupplierResponse[]>([]);
-  const [grades, setGrades] = useState<GradeResponse[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: rows = [], isPending, error: loadError } = useMixDesigns(pid);
+  const { data: suppliers = [] } = useSuppliers(pid);
+  const { data: grades = [] } = useGrades();
+  const createMixDesign = useCreateMixDesign(pid);
+
   const [form, setForm] = useState({ ...EMPTY });
-  const [submitting, setSubmitting] = useState(false);
   const [showForm, setShowForm] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
 
   const set = (k: keyof typeof EMPTY) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setForm((p) => ({ ...p, [k]: e.target.value }));
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [md, sup, gr] = await Promise.all([
-        mixDesignsApi.list(pid),
-        suppliersApi.list(pid),
-        catalogApi.grades(),
-      ]);
-      setRows(md);
-      setSuppliers(sup);
-      setGrades(gr);
-    } catch (err) {
-      setError(getApiErrorMessage(err, 'Unable to load mix designs.'));
-    } finally {
-      setLoading(false);
-    }
-  }, [pid]);
-
-  useEffect(() => { void load(); }, [load]);
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null); setSuccess(null); setSubmitting(true);
     const payload: MixDesignCreate = {
       supplier_id: Number(form.supplier_id),
       grade_id: Number(form.grade_id),
@@ -79,32 +52,27 @@ export const ProjectMixDesigns: React.FC = () => {
       approval_status: form.approval_status,
     };
     try {
-      const md = await mixDesignsApi.create(pid, payload);
-      setSuccess(`Mix design for ${md.grade_name} (${md.supplier_name}) added.`);
+      const md = await createMixDesign.mutateAsync(payload);
+      toast.success(`Mix design for ${md.grade_name} (${md.supplier_name}) added.`);
       setForm({ ...EMPTY });
       setShowForm(false);
-      void load();
     } catch (err) {
-      setError(getApiErrorMessage(err, 'Unable to add mix design.'));
-    } finally {
-      setSubmitting(false);
+      toast.error(getApiErrorMessage(err, 'Unable to add mix design.'));
     }
   };
 
-  const alert: React.CSSProperties = { padding: '12px 16px', borderRadius: 8, marginBottom: 16, fontSize: 14 };
   const canAdd = form.supplier_id !== '' && form.grade_id !== '';
 
   return (
     <div>
-      {error && <div style={{ ...alert, background: '#FEE2E2', color: '#991B1B', border: '1px solid #FCA5A5' }}>{error}</div>}
-      {success && <div style={{ ...alert, background: '#DCFCE7', color: '#166534', border: '1px solid #86EFAC' }}>{success}</div>}
+      {loadError && <ErrorBox>{getApiErrorMessage(loadError, 'Unable to load mix designs.')}</ErrorBox>}
 
       {canManage && showForm && (
         <Card className="qms-form-section">
-          <h3 className="qms-section-heading-plain" style={{ marginBottom: 12 }}>Add a mix design</h3>
+          <h3 className="qms-section-heading-plain qms-mb-12">Add a mix design</h3>
           {suppliers.length === 0 ? (
             <div>
-              <p className="text-muted" style={{ fontSize: 14, marginTop: 0 }}>
+              <p className="text-muted qms-mb-12">
                 Register a supplier first — mix designs are tied to a supplier and grade.
               </p>
               <Button type="button" variant="ghost" onClick={() => setShowForm(false)}>Cancel</Button>
@@ -130,11 +98,11 @@ export const ProjectMixDesigns: React.FC = () => {
                   { label: 'Rejected', value: 'REJECTED' },
                 ]}
               />
-              <div style={{ gridColumn: 'span 2', display: 'flex', gap: 8 }}>
-                <Button type="submit" variant="primary" disabled={submitting || !canAdd} icon={<Plus size={16} />}>
-                  {submitting ? 'Adding…' : 'Add mix design'}
+              <div className="qms-form-actions qms-grid-span-2">
+                <Button type="submit" variant="primary" disabled={createMixDesign.isPending || !canAdd} icon={<Plus size={16} />}>
+                  {createMixDesign.isPending ? 'Adding…' : 'Add mix design'}
                 </Button>
-                <Button type="button" variant="ghost" disabled={submitting} onClick={() => setShowForm(false)}>
+                <Button type="button" variant="ghost" disabled={createMixDesign.isPending} onClick={() => setShowForm(false)}>
                   Cancel
                 </Button>
               </div>
@@ -144,7 +112,7 @@ export const ProjectMixDesigns: React.FC = () => {
       )}
 
       <Card className="qms-form-section" padding="none">
-        <div className="qms-p-4 qms-border-b" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+        <div className="qms-card-header">
           <h3 className="qms-section-heading-plain">Mix designs</h3>
           {canManage && !showForm && (
             <Button variant="primary" size="sm" icon={<Plus size={15} />} onClick={() => setShowForm(true)}>
@@ -156,7 +124,7 @@ export const ProjectMixDesigns: React.FC = () => {
           <table className="qms-table">
             <thead><tr><th>Grade</th><th>Supplier</th><th>W/C ratio</th><th>28-day (MPa)</th><th>Approval</th></tr></thead>
             <tbody>
-              {loading ? (
+              {isPending ? (
                 <tr><td colSpan={5} className="text-muted">Loading…</td></tr>
               ) : rows.length === 0 ? (
                 <tr><td colSpan={5} className="text-muted">No mix designs yet.</td></tr>

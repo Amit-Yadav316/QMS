@@ -78,8 +78,31 @@ h1, h2, h3, h4, h5, h6 {
 
 /* Small shared layout utilities */
 .qms-mb-12 { margin-bottom: 12px; }
+.qms-mt-8 { margin-top: 8px; }
 .qms-grid-span-2 { grid-column: span 2; }
 .qms-field-end { display: flex; align-items: flex-end; }
+.qms-nowrap { white-space: nowrap; }
+
+.qms-row-between {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.qms-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.qms-chip {
+  padding: 6px 12px;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  border: 1px solid var(--gray-200);
+  background: var(--gray-50);
+}
 
 .qms-card-header {
   display: flex;

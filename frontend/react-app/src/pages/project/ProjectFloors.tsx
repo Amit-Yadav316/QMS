@@ -104,7 +104,7 @@ export const ProjectFloors: React.FC = () => {
       ) : (
         <>
           <Card className="qms-form-section">
-            <div className="qms-floors-head">
+            <div className="qms-row-between qms-mb-12">
               <h3 className="qms-section-heading-plain">Tower floors</h3>
               {canManage && !showForm && (
                 <Button variant="primary" size="sm" icon={<Plus size={15} />} disabled={atCapacity} onClick={() => setShowForm(true)}>
@@ -176,9 +176,9 @@ export const ProjectFloors: React.FC = () => {
               ) : floors.length === 0 ? (
                 <p className="text-muted qms-floors-msg">No floors yet — use “Add floors” above.</p>
               ) : (
-                <div className="qms-floor-chips">
+                <div className="qms-chip-row">
                   {floors.map((f) => (
-                    <span key={f.floor_id} className="qms-floor-chip">{f.floor_label}</span>
+                    <span key={f.floor_id} className="qms-chip">{f.floor_label}</span>
                   ))}
                 </div>
               )}
