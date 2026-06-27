@@ -1,5 +1,6 @@
 import React from 'react';
 import { NavLink, useMatch, useNavigate } from 'react-router-dom';
+import { onActivateKey } from '../../lib/a11y';
 import {
   Home,
   BarChart2,
@@ -130,9 +131,11 @@ export const Sidebar: React.FC = () => {
           <div
             className="qms-avatar"
             role="button"
+            tabIndex={0}
             aria-label="View profile"
             title="View profile"
             onClick={() => navigate('/app/profile')}
+            onKeyDown={onActivateKey(() => navigate('/app/profile'))}
             style={
               user?.avatar_url
                 ? { background: `center / cover no-repeat url(${user.avatar_url})`, cursor: 'pointer' }
@@ -141,7 +144,14 @@ export const Sidebar: React.FC = () => {
           >
             {!user?.avatar_url && initials(user?.full_name)}
           </div>
-          <div style={{ cursor: 'pointer' }} onClick={() => navigate('/app/profile')}>
+          <div
+            role="button"
+            tabIndex={0}
+            aria-label="View profile"
+            style={{ cursor: 'pointer' }}
+            onClick={() => navigate('/app/profile')}
+            onKeyDown={onActivateKey(() => navigate('/app/profile'))}
+          >
             <div className="qms-user-name">{user?.full_name ?? 'Not signed in'}</div>
             <div className="qms-user-role">{roleLabel(user?.role)}</div>
           </div>
@@ -149,8 +159,10 @@ export const Sidebar: React.FC = () => {
             size={16}
             className="qms-settings-icon"
             role="button"
+            tabIndex={0}
             aria-label="Log out"
             onClick={handleLogout}
+            onKeyDown={onActivateKey(handleLogout)}
             style={{ cursor: 'pointer' }}
           />
         </div>

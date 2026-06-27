@@ -173,7 +173,7 @@ export const ProjectContractors: React.FC = () => {
             )}
 
             <div className="qms-grid-span-2">
-              <label className="qms-input-label qms-mb-12">Towers this contractor works on</label>
+              <div className="qms-input-label qms-mb-12">Towers this contractor works on</div>
               {towers.length === 0 ? (
                 <p className="qms-text-sm text-muted qms-detail-msg">No towers on this project yet — the contractor will cover the entire project.</p>
               ) : (

@@ -18,9 +18,9 @@ export const LabRegistrationForm: React.FC = () => {
         </div>
 
         <div className="qms-auto-banner" style={{ marginBottom: 32, padding: 16 }}>
-          <div className="qms-auto-field"><label>Project Name</label><span>Godrej Splendour Phase 2</span></div>
-          <div className="qms-auto-field"><label>Invited By</label><span>L&T Construction (Main Contractor)</span></div>
-          <div className="qms-auto-field"><label>Invitation Token</label><span>TOK-9981-ABCD</span></div>
+          <div className="qms-auto-field"><span className="qms-auto-label">Project Name</span><span>Godrej Splendour Phase 2</span></div>
+          <div className="qms-auto-field"><span className="qms-auto-label">Invited By</span><span>L&T Construction (Main Contractor)</span></div>
+          <div className="qms-auto-field"><span className="qms-auto-label">Invitation Token</span><span>TOK-9981-ABCD</span></div>
         </div>
 
         <Card className="qms-form-section">

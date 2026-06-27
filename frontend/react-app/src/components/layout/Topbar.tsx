@@ -4,6 +4,7 @@ import { Bell, LogOut } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { useAuth } from '../../hooks/useAuth';
 import { initials } from '../../lib/initials';
+import { onActivateKey } from '../../lib/a11y';
 import './Topbar.css';
 
 interface TopbarProps {
@@ -34,9 +35,11 @@ export const Topbar: React.FC<TopbarProps> = ({ title }) => {
         <div
           className="qms-avatar qms-avatar--clickable"
           role="button"
+          tabIndex={0}
           aria-label="View profile"
           title={user?.full_name ? `${user.full_name} — view profile` : 'View profile'}
           onClick={() => navigate('/app/profile')}
+          onKeyDown={onActivateKey(() => navigate('/app/profile'))}
           style={user?.avatar_url ? { background: `center / cover no-repeat url(${user.avatar_url})` } : undefined}
         >
           {!user?.avatar_url && initials(user?.full_name)}

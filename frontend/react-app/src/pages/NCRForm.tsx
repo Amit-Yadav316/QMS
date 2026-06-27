@@ -32,19 +32,19 @@ export const NCRForm: React.FC = () => {
 
       <div className="qms-auto-banner" style={{ marginBottom: 24, padding: 16, background: '#FEF2F2', borderColor: '#FCA5A5' }}>
         <div className="qms-auto-field">
-          <label style={{ color: 'var(--red)' }}>NCR ID *</label>
+          <span className="qms-auto-label" style={{ color: 'var(--red)' }}>NCR ID *</span>
           <span style={{ color: 'var(--red)' }}>NCR-2024-015</span>
         </div>
         <div className="qms-auto-field">
-          <label style={{ color: 'var(--red)' }}>Linked Result ID</label>
+          <span className="qms-auto-label" style={{ color: 'var(--red)' }}>Linked Result ID</span>
           <span style={{ color: 'var(--red)' }}>RES-2024-1045 (Cube Fail)</span>
         </div>
         <div className="qms-auto-field">
-          <label style={{ color: 'var(--red)' }}>Severity</label>
+          <span className="qms-auto-label" style={{ color: 'var(--red)' }}>Severity</span>
           <span style={{ color: 'var(--red)' }}>HIGH - Structural</span>
         </div>
         <div className="qms-auto-field">
-          <label style={{ color: 'var(--red)' }}>Date Raised</label>
+          <span className="qms-auto-label" style={{ color: 'var(--red)' }}>Date Raised</span>
           <span style={{ color: 'var(--red)' }}>29-Jun-2024</span>
         </div>
       </div>
