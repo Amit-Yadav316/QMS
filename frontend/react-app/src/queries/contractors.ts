@@ -11,10 +11,20 @@ export const useProjectContractors = (pid: number, enabled = true) =>
     enabled,
   });
 
+export const useAvailableContractors = (pid: number, enabled = true) =>
+  useQuery({
+    queryKey: ['available-contractors', pid],
+    queryFn: () => projectsApi.availableContractors(pid),
+    enabled,
+  });
+
 export const useAddContractor = (pid: number) => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (data: ProjectContractorCreate) => projectsApi.addContractor(pid, data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: contractorKeys.list(pid) }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: contractorKeys.list(pid) });
+      void qc.invalidateQueries({ queryKey: ['available-contractors', pid] });
+    },
   });
 };

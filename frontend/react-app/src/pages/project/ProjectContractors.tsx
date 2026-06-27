@@ -1,25 +1,25 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
 import { Select } from '../../components/ui/Select';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
+import { ErrorBox } from '../../components/ui/ErrorBox';
 import { Plus, FlaskConical, Factory, ChevronRight, AlertTriangle } from 'lucide-react';
 import { useProject } from '../../components/layout/ProjectLayout';
-import { projectsApi } from '../../api/projects';
-import { suppliersApi } from '../../api/suppliers';
-import { labsApi } from '../../api/labs';
 import { getApiErrorMessage } from '../../api/client';
+import { toast } from '../../lib/toast';
+import { useAddContractor, useAvailableContractors, useProjectContractors } from '../../queries/contractors';
+import { useProjectTowers } from '../../queries/floors';
+import { useSuppliers } from '../../queries/suppliers';
+import { useLabs } from '../../queries/labs';
 import type {
   AvailableContractor,
   ContractorLinkStatus,
-  LabResponse,
-  ProjectContractor,
   ProjectContractorCreate,
-  SupplierResponse,
-  TowerResponse,
 } from '../../types/master';
+import './ProjectContractors.css';
 
 const STATUS_BADGE: Record<ContractorLinkStatus, { variant: 'pass' | 'pending' | 'fail'; label: string }> = {
   ACCEPTED: { variant: 'pass', label: 'Accepted' },
@@ -29,9 +29,8 @@ const STATUS_BADGE: Record<ContractorLinkStatus, { variant: 'pass' | 'pending' |
 
 const fmtDate = (d: string | null) => (d ? new Date(d).toLocaleDateString() : '—');
 
-// A small "N suppliers · M labs" summary shown on each contractor card.
 const Tally: React.FC<{ icon: React.ReactNode; n: number; noun: string }> = ({ icon, n, noun }) => (
-  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--gray-600)', fontSize: 13 }}>
+  <span className="qms-tally">
     {icon}
     {n} {noun}{n === 1 ? '' : 's'}
   </span>
@@ -43,12 +42,13 @@ export const ProjectContractors: React.FC = () => {
   const pid = project.project_id;
   const canManage = project.access.can_manage_client_side;
 
-  const [rows, setRows] = useState<ProjectContractor[]>([]);
-  const [towers, setTowers] = useState<TowerResponse[]>([]);
-  const [suppliers, setSuppliers] = useState<SupplierResponse[]>([]);
-  const [labs, setLabs] = useState<LabResponse[]>([]);
-  const [available, setAvailable] = useState<AvailableContractor[]>([]);
-  const [loading, setLoading] = useState(true);
+  const contractorsQuery = useProjectContractors(pid);
+  const rows = contractorsQuery.data ?? [];
+  const { data: towers = [] } = useProjectTowers(pid);
+  const { data: suppliers = [] } = useSuppliers(pid);
+  const { data: labs = [] } = useLabs(pid);
+  const { data: available = [] } = useAvailableContractors(pid, canManage);
+  const addContractor = useAddContractor(pid);
 
   // Add-contractor form (hidden until "Add contractor" is clicked).
   const [showForm, setShowForm] = useState(false);
@@ -58,34 +58,8 @@ export const ProjectContractors: React.FC = () => {
   const [phone, setPhone] = useState('');
   const [selectedOrgId, setSelectedOrgId] = useState('');
   const [towerIds, setTowerIds] = useState<number[]>([]);
-  const [submitting, setSubmitting] = useState(false);
   const [confirmTarget, setConfirmTarget] = useState<AvailableContractor | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [pcs, tw, sup, lb, avail] = await Promise.all([
-        projectsApi.contractors(pid),
-        projectsApi.towers(pid),
-        suppliersApi.list(pid),
-        labsApi.list(pid),
-        canManage ? projectsApi.availableContractors(pid) : Promise.resolve([] as AvailableContractor[]),
-      ]);
-      setRows(pcs);
-      setTowers(tw);
-      setSuppliers(sup);
-      setLabs(lb);
-      setAvailable(avail);
-    } catch (err) {
-      setError(getApiErrorMessage(err, 'Unable to load contractors.'));
-    } finally {
-      setLoading(false);
-    }
-  }, [pid, canManage]);
-
-  useEffect(() => { void load(); }, [load]);
+  const submitting = addContractor.isPending;
 
   const toggleTower = (id: number) =>
     setTowerIds((prev) => (prev.includes(id) ? prev.filter((t) => t !== id) : [...prev, id]));
@@ -108,10 +82,9 @@ export const ProjectContractors: React.FC = () => {
   // The single place that calls the API — used by both the new-contractor flow
   // and the "assign anyway" confirmation for an already-engaged contractor.
   const doSubmit = async (payload: ProjectContractorCreate) => {
-    setError(null); setSuccess(null); setSubmitting(true);
     try {
-      const pc = await projectsApi.addContractor(pid, payload);
-      setSuccess(
+      const pc = await addContractor.mutateAsync(payload);
+      toast.success(
         payload.contractor_org_id
           ? `${pc.contractor_org_name} assigned — they'll accept the project from their dashboard.`
           : `${pc.contractor_org_name} invited — they'll accept the project after activating.`,
@@ -119,12 +92,9 @@ export const ProjectContractors: React.FC = () => {
       resetForm();
       setShowForm(false);
       setConfirmTarget(null);
-      void load();
     } catch (err) {
-      setError(getApiErrorMessage(err, 'Unable to add contractor.'));
+      toast.error(getApiErrorMessage(err, 'Unable to add contractor.'));
       setConfirmTarget(null);
-    } finally {
-      setSubmitting(false);
     }
   };
 
@@ -132,9 +102,9 @@ export const ProjectContractors: React.FC = () => {
     e.preventDefault();
     if (mode === 'existing') {
       const chosen = available.find((a) => a.contractor_org_id === Number(selectedOrgId));
-      if (!chosen) { setError('Pick a contractor from the list.'); return; }
+      if (!chosen) { toast.error('Pick a contractor from the list.'); return; }
       // Busy elsewhere → confirm first; otherwise assign straight away.
-      if (chosen.engagements.length > 0) { setError(null); setConfirmTarget(chosen); return; }
+      if (chosen.engagements.length > 0) { setConfirmTarget(chosen); return; }
       void doSubmit({ contractor_org_id: chosen.contractor_org_id, tower_ids: towerIds });
     } else {
       void doSubmit({
@@ -146,30 +116,22 @@ export const ProjectContractors: React.FC = () => {
     }
   };
 
-  const alert: React.CSSProperties = { padding: '12px 16px', borderRadius: 8, marginBottom: 16, fontSize: 14 };
-
   return (
     <div>
-      {error && <div style={{ ...alert, background: '#FEE2E2', color: '#991B1B', border: '1px solid #FCA5A5' }}>{error}</div>}
-      {success && <div style={{ ...alert, background: '#DCFCE7', color: '#166534', border: '1px solid #86EFAC' }}>{success}</div>}
+      {contractorsQuery.error && <ErrorBox>{getApiErrorMessage(contractorsQuery.error, 'Unable to load contractors.')}</ErrorBox>}
 
       {canManage && showForm && (
         <Card className="qms-form-section">
-          <h3 className="qms-section-heading-plain" style={{ marginBottom: 12 }}>Bring a contractor onto this project</h3>
+          <h3 className="qms-section-heading-plain qms-mb-12">Bring a contractor onto this project</h3>
 
           {available.length > 0 && (
-            <div style={{ display: 'inline-flex', borderRadius: 8, border: '1px solid var(--gray-200)', overflow: 'hidden', marginBottom: 16 }}>
+            <div className="qms-modeswitch">
               {(['new', 'existing'] as const).map((m) => (
                 <button
                   key={m}
                   type="button"
-                  onClick={() => { setMode(m); setError(null); }}
-                  style={{
-                    padding: '8px 16px', border: 'none', cursor: 'pointer', font: 'inherit', fontSize: 13,
-                    fontWeight: mode === m ? 600 : 500,
-                    background: mode === m ? 'var(--blue-50, #EFF6FF)' : '#fff',
-                    color: mode === m ? 'var(--blue-700, #1D4ED8)' : 'var(--gray-600)',
-                  }}
+                  onClick={() => setMode(m)}
+                  className={`qms-modeswitch-btn ${mode === m ? 'qms-modeswitch-btn--active' : ''}`}
                 >
                   {m === 'new' ? 'New contractor' : 'Existing contractor'}
                 </button>
@@ -179,7 +141,7 @@ export const ProjectContractors: React.FC = () => {
 
           <form onSubmit={handleSubmit} className="qms-grid-2">
             {mode === 'existing' ? (
-              <div style={{ gridColumn: 'span 2' }}>
+              <div className="qms-grid-span-2">
                 <Select
                   label="Contractor"
                   required
@@ -193,7 +155,7 @@ export const ProjectContractors: React.FC = () => {
                     })),
                   ]}
                 />
-                <p className="qms-text-sm text-muted" style={{ marginTop: 6, marginBottom: 0 }}>
+                <p className="qms-text-sm text-muted qms-mt-8">
                   Re-uses the same contractor company. Their team for this project is assigned separately.
                 </p>
               </div>
@@ -203,19 +165,19 @@ export const ProjectContractors: React.FC = () => {
                 <Input label="Contractor admin email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="admin@contractor.com" />
                 <Input label="Phone" type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Optional" />
                 {available.length > 0 && (
-                  <p className="qms-text-sm text-muted" style={{ gridColumn: 'span 2', margin: 0 }}>
+                  <p className="qms-text-sm text-muted qms-grid-span-2">
                     Already worked with this contractor? Switch to <strong>Existing contractor</strong> instead of re-inviting them.
                   </p>
                 )}
               </>
             )}
 
-            <div style={{ gridColumn: 'span 2' }}>
-              <label className="qms-input-label" style={{ display: 'block', marginBottom: 6 }}>Towers this contractor works on</label>
+            <div className="qms-grid-span-2">
+              <label className="qms-input-label qms-mb-12">Towers this contractor works on</label>
               {towers.length === 0 ? (
-                <p className="qms-text-sm text-muted" style={{ margin: 0 }}>No towers on this project yet — the contractor will cover the entire project.</p>
+                <p className="qms-text-sm text-muted qms-detail-msg">No towers on this project yet — the contractor will cover the entire project.</p>
               ) : (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                <div className="qms-tower-picker">
                   {towers.map((t) => {
                     const takenByName = wholeProjectBy ?? takenBy[t.tower_name];
                     const isTaken = !!takenByName;
@@ -225,15 +187,7 @@ export const ProjectContractors: React.FC = () => {
                       <label
                         key={t.tower_id}
                         title={isTaken ? `Already assigned to ${takenByName}` : undefined}
-                        style={{
-                          display: 'inline-flex', alignItems: 'center', gap: 8,
-                          cursor: isTaken ? 'not-allowed' : 'pointer',
-                          padding: '10px 16px', borderRadius: 10, fontSize: 14,
-                          opacity: isTaken ? 0.55 : 1,
-                          border: `1px solid ${checked ? 'var(--blue-500, #3B82F6)' : 'var(--gray-200)'}`,
-                          background: checked ? 'var(--blue-50, #EFF6FF)' : 'var(--gray-50, #F9FAFB)',
-                          color: checked ? 'var(--blue-700, #1D4ED8)' : 'var(--gray-700)',
-                        }}
+                        className={`qms-tower-chip ${checked ? 'qms-tower-chip--checked' : ''} ${isTaken ? 'qms-tower-chip--taken' : ''}`}
                       >
                         <input type="checkbox" checked={checked} disabled={isTaken} onChange={() => toggleTower(t.tower_id)} />
                         {t.tower_name}
@@ -242,16 +196,16 @@ export const ProjectContractors: React.FC = () => {
                   })}
                 </div>
               )}
-              <p className="qms-text-sm text-muted" style={{ marginTop: 6, marginBottom: 0 }}>
+              <p className="qms-text-sm text-muted qms-mt-8">
                 Leave all unchecked for the entire project. Dimmed towers are already assigned to another contractor.
               </p>
             </div>
 
-            <div style={{ gridColumn: 'span 2', display: 'flex', gap: 8 }}>
+            <div className="qms-form-actions qms-grid-span-2">
               <Button type="submit" variant="primary" disabled={submitting} icon={<Plus size={16} />}>
                 {submitting ? 'Sending…' : mode === 'existing' ? 'Assign contractor' : 'Add contractor'}
               </Button>
-              <Button type="button" variant="ghost" disabled={submitting} onClick={() => { setShowForm(false); resetForm(); setError(null); }}>
+              <Button type="button" variant="ghost" disabled={submitting} onClick={() => { setShowForm(false); resetForm(); }}>
                 Cancel
               </Button>
             </div>
@@ -260,7 +214,7 @@ export const ProjectContractors: React.FC = () => {
       )}
 
       <Card className="qms-form-section" padding="none">
-        <div className="qms-p-4 qms-border-b" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+        <div className="qms-card-header">
           <h3 className="qms-section-heading-plain">Contractors on this project</h3>
           {canManage && !showForm && (
             <Button variant="primary" size="sm" icon={<Plus size={15} />} onClick={() => setShowForm(true)}>
@@ -268,8 +222,8 @@ export const ProjectContractors: React.FC = () => {
             </Button>
           )}
         </div>
-        <div className="qms-p-4" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {loading ? (
+        <div className="qms-p-4 qms-contractor-list">
+          {contractorsQuery.isPending ? (
             <p className="text-muted qms-text-sm">Loading…</p>
           ) : rows.length === 0 ? (
             <p className="text-muted qms-text-sm">No contractors yet.</p>
@@ -280,22 +234,25 @@ export const ProjectContractors: React.FC = () => {
               return (
                 <Card
                   key={c.pc_id}
+                  className="qms-contractor-card"
+                  role="button"
+                  tabIndex={0}
                   onClick={() => navigate(`/app/projects/${pid}/contractors/${c.contractor_org_id}`)}
-                  style={{ cursor: 'pointer' }}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(`/app/projects/${pid}/contractors/${c.contractor_org_id}`); } }}
                 >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
+                  <div className="qms-contractor-card-head">
                     <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <span className="font-medium" style={{ fontSize: 15 }}>{c.contractor_org_name}</span>
+                      <div className="qms-detail-group-head">
+                        <span className="font-medium qms-contractor-name">{c.contractor_org_name}</span>
                         <Badge variant={STATUS_BADGE[c.status].variant}>{STATUS_BADGE[c.status].label}</Badge>
                       </div>
-                      <p className="qms-text-sm text-muted" style={{ margin: '4px 0 0' }}>
+                      <p className="qms-text-sm text-muted qms-detail-msg">
                         Scope: {c.scope ?? 'Entire project'} · Added {new Date(c.assigned_at).toLocaleDateString()}
                       </p>
                     </div>
-                    <ChevronRight size={18} className="text-muted" style={{ flexShrink: 0 }} />
+                    <ChevronRight size={18} className="text-muted" />
                   </div>
-                  <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', marginTop: 12 }}>
+                  <div className="qms-contractor-tallies">
                     <Tally icon={<Factory size={14} />} n={supCount} noun="RMC supplier" />
                     <Tally icon={<FlaskConical size={14} />} n={labCount} noun="testing lab" />
                   </div>
@@ -308,37 +265,36 @@ export const ProjectContractors: React.FC = () => {
 
       {confirmTarget && (
         <div
-          role="dialog"
-          aria-modal="true"
-          style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: 16 }}
+          role="presentation"
+          className="qms-modal-overlay"
           onClick={() => !submitting && setConfirmTarget(null)}
         >
-          <Card style={{ maxWidth: 480, width: '100%' }} onClick={(e) => e.stopPropagation()}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-              <span style={{ color: 'var(--amber, #D97706)', display: 'flex' }}><AlertTriangle size={20} /></span>
-              <h3 className="qms-section-heading-plain" style={{ margin: 0 }}>Contractor already engaged</h3>
+          <Card className="qms-modal-card" role="dialog" aria-modal="true" aria-label="Contractor already engaged" onClick={(e) => e.stopPropagation()}>
+            <div className="qms-modal-head">
+              <span className="text-warning qms-modal-icon"><AlertTriangle size={20} /></span>
+              <h3 className="qms-section-heading-plain qms-detail-msg">Contractor already engaged</h3>
             </div>
-            <p className="qms-text-sm" style={{ marginTop: 0 }}>
+            <p className="qms-text-sm qms-detail-msg">
               <strong>{confirmTarget.org_name}</strong> is currently engaged on:
             </p>
-            <ul style={{ listStyle: 'none', margin: '0 0 12px', padding: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <ul className="qms-modal-engagements">
               {confirmTarget.engagements.map((eng) => (
-                <li key={eng.project_id} style={{ border: '1px solid var(--gray-200)', borderRadius: 8, padding: '8px 12px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span className="font-medium" style={{ fontSize: 14 }}>{eng.project_name}</span>
+                <li key={eng.project_id} className="qms-modal-engagement">
+                  <div className="qms-detail-group-head qms-detail-msg">
+                    <span className="font-medium qms-text-sm">{eng.project_name}</span>
                     <Badge variant={STATUS_BADGE[eng.status].variant}>{STATUS_BADGE[eng.status].label}</Badge>
                   </div>
-                  <div className="qms-text-sm text-muted" style={{ marginTop: 2 }}>
+                  <div className="qms-text-sm text-muted">
                     {fmtDate(eng.start_date)} → {fmtDate(eng.end_date)}
                   </div>
                 </li>
               ))}
             </ul>
-            <p className="qms-text-sm text-muted" style={{ marginTop: 0 }}>
+            <p className="qms-text-sm text-muted qms-detail-msg">
               You can still assign them. Note their contractor users (project managers, quality engineers,
               supervisors) on this project must be different from those on their other projects.
             </p>
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
+            <div className="qms-modal-actions">
               <Button variant="ghost" disabled={submitting} onClick={() => setConfirmTarget(null)}>Cancel</Button>
               <Button
                 variant="primary"
