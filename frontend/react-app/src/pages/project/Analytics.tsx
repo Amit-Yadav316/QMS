@@ -3,14 +3,14 @@ import {
   Bar, BarChart, CartesianGrid, Legend, Line, LineChart,
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
-import { Card } from '../components/ui/Card';
-import { Select } from '../components/ui/Select';
-import { Input } from '../components/ui/Input';
-import { useProject } from '../components/layout/ProjectLayout';
-import { useAnalyticsOverview, useAnalyticsQuality, useSupplierScores } from '../queries/analytics';
-import { useProjectTowers } from '../queries/floors';
-import { useGrades } from '../queries/catalog';
-import type { GradeTrendPoint, QualityFilters } from '../types/master';
+import { Card } from '../../components/ui/Card';
+import { Select } from '../../components/ui/Select';
+import { Input } from '../../components/ui/Input';
+import { useProject } from '../../components/layout/ProjectLayout';
+import { useAnalyticsOverview, useAnalyticsQuality, useSupplierScores } from '../../queries/analytics';
+import { useProjectTowers } from '../../queries/floors';
+import { useGrades } from '../../queries/catalog';
+import type { GradeTrendPoint, QualityFilters } from '../../types/master';
 import './Analytics.css';
 
 const LINE_COLORS = ['var(--blue)', 'var(--green)', 'var(--amber)', 'var(--red)', '#8b5cf6', '#06b6d4'];

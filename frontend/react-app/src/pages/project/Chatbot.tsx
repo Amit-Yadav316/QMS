@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Send, Bot, User, Sparkles } from 'lucide-react';
-import { useProject } from '../components/layout/ProjectLayout';
-import { chatApi } from '../api/chat';
-import { getApiErrorMessage } from '../api/client';
+import { useProject } from '../../components/layout/ProjectLayout';
+import { chatApi } from '../../api/chat';
+import { getApiErrorMessage } from '../../api/client';
 import './Chatbot.css';
 
 interface Msg {

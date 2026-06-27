@@ -37,6 +37,11 @@ cleanup debt and deliberately-deferred work. Keep it current as you go.
       pours. Mix-design per-record attachment + the full ~16-field form are
       intentionally left thin until this is built.
 
+- [ ] **UI component library decision (Radix vs Tailwind+shadcn).** Scoped plan in
+      `frontend/react-app/UI_LIBRARY_PLAN.md`. Path A (incremental Radix primitives +
+      polish) is recommended first and low-risk; Path B (full Tailwind+shadcn) is the
+      visual overhaul and needs explicit approval.
+
 ## Recently done (for context)
 
 - Phases 1–9 complete (pours → dispatch/gate → cube/IS-456 → NCR lifecycle →

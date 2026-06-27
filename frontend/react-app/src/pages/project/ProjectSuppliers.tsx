@@ -10,15 +10,8 @@ import { useProject } from '../../components/layout/ProjectLayout';
 import { getApiErrorMessage } from '../../api/client';
 import { toast } from '../../lib/toast';
 import { useCreateSupplier, useResendSupplierConfirmation, useSuppliers } from '../../queries/suppliers';
+import { num, str } from '../../lib/coerce';
 import type { ConfirmationStatus, SupplierCreate, SupplierResponse } from '../../types/master';
-
-const str = (v: string): string | undefined => (v.trim() === '' ? undefined : v.trim());
-const num = (v: string): number | undefined => {
-  const t = v.trim();
-  if (t === '') return undefined;
-  const n = Number(t);
-  return Number.isNaN(n) ? undefined : n;
-};
 
 const CONF_VARIANT: Record<ConfirmationStatus, 'pass' | 'warn' | 'fail'> = {
   CONFIRMED: 'pass', PENDING: 'warn', DECLINED: 'fail',

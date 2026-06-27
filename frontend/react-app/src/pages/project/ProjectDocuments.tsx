@@ -9,6 +9,7 @@ import { ErrorBox } from '../../components/ui/ErrorBox';
 import { useProject } from '../../components/layout/ProjectLayout';
 import { getApiErrorMessage } from '../../api/client';
 import { toast } from '../../lib/toast';
+import { useConfirm } from '../../components/ui/ConfirmDialog';
 import {
   useDeleteDocument,
   useDocuments,
@@ -46,6 +47,7 @@ export const ProjectDocuments: React.FC = () => {
   const upload = useUploadDocument(pid);
   const download = useDownloadDocument(pid);
   const remove = useDeleteDocument(pid);
+  const confirm = useConfirm();
 
   const fileRef = useRef<HTMLInputElement>(null);
   const [search, setSearch] = useState('');
@@ -82,7 +84,12 @@ export const ProjectDocuments: React.FC = () => {
   };
 
   const handleDelete = async (doc: DocumentResponse) => {
-    if (!window.confirm(`Delete “${doc.original_filename}”? This cannot be undone.`)) return;
+    if (!(await confirm({
+      title: 'Delete file?',
+      description: `“${doc.original_filename}” will be permanently removed. This cannot be undone.`,
+      confirmLabel: 'Delete',
+      danger: true,
+    }))) return;
     try {
       await remove.mutateAsync(doc.document_id);
       toast.success(`Deleted “${doc.original_filename}”.`);

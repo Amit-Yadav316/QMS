@@ -5,15 +5,15 @@
 import React, { useState } from 'react';
 import { Navigate, useParams } from 'react-router-dom';
 import { ScanLine, Truck, CheckCircle, XCircle } from 'lucide-react';
-import { Card } from '../components/ui/Card';
-import { Button } from '../components/ui/Button';
-import { Input } from '../components/ui/Input';
-import { Badge } from '../components/ui/Badge';
-import { useAuth } from '../hooks/useAuth';
-import { useProject } from '../components/layout/ProjectLayout';
-import { dispatchesApi } from '../api/dispatches';
-import { getApiErrorMessage } from '../api/client';
-import type { GateTruckView, TruckStatus } from '../types/master';
+import { Card } from '../../components/ui/Card';
+import { Button } from '../../components/ui/Button';
+import { Input } from '../../components/ui/Input';
+import { Badge } from '../../components/ui/Badge';
+import { useAuth } from '../../hooks/useAuth';
+import { useProject } from '../../components/layout/ProjectLayout';
+import { dispatchesApi } from '../../api/dispatches';
+import { getApiErrorMessage } from '../../api/client';
+import type { GateTruckView, TruckStatus } from '../../types/master';
 import './GateScan.css';
 
 const TRUCK_VARIANT: Record<TruckStatus, 'pass' | 'fail' | 'warn' | 'info' | 'pending'> = {

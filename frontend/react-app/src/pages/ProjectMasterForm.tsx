@@ -1,64 +1,82 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
+import { useForm, useFieldArray, useWatch } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import { Card } from '../components/ui/Card';
 import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
 import { Button } from '../components/ui/Button';
 import { Plus, Trash2, ChevronUp } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
-import { projectsApi } from '../api/projects';
+import { useCreateProject } from '../queries/projects';
 import { getApiErrorMessage } from '../api/client';
+import { num, str } from '../lib/coerce';
 import type { ProjectCreate, ProjectStatus, ProjectType, TowerCreate } from '../types/master';
 import './ProjectMasterForm.css';
 
-// String-valued mirror of the project fields this form collects. Converted to a
-// ProjectCreate payload (with proper number/optional handling) on submit.
-interface ProjectFormState {
+// The form keeps every field as a string (the raw input value); the proper
+// number/optional handling happens when building the ProjectCreate payload on
+// submit. Cross-field tower caps are validated in onSubmit (see below) so their
+// messages can be aggregated into a single banner.
+const towerSchema = z.object({
+  tower_code: z.string(),
+  tower_name: z.string(),
+  tower_type: z.string(),
+  floors_total: z.string(),
+  no_of_basements: z.string(),
+  floor_height_m: z.string(),
+  start_label: z.string(),
+  construction_start_date: z.string(),
+});
+
+const schema = z.object({
   // A · Identity (org / client admin come from the authenticated user)
-  project_name: string;
-  project_type: string; // '' | ProjectType
-  gst_number: string;
-  project_code: string;
+  project_name: z.string().min(1, 'Project name is required'),
+  project_type: z.string(),
+  gst_number: z.string(),
+  project_code: z.string(),
   // B · Location
-  address_line1: string;
-  address_line2: string;
-  city: string;
-  state: string;
-  pin_code: string;
-  geo_coordinates: string;
-  site_area_sqm: string;
+  address_line1: z.string(),
+  address_line2: z.string(),
+  city: z.string(),
+  state: z.string(),
+  pin_code: z.string(),
+  geo_coordinates: z.string(),
+  site_area_sqm: z.string(),
   // C · Timeline & scope
-  start_date: string;
-  end_date: string;
-  builtup_area_sqft: string;
-  no_of_towers: string;
-  no_of_basements: string;
-  max_floors: string;
-  status: string; // ProjectStatus
-  // F · Quality parameters
-  min_cube_samples: string;
-  acceptance_criteria: string;
-  early_test_age_days: string;
-  mid_test_age_days: string;
-  final_test_age_days: string;
-  characteristic_strength_pct: string;
-  ncr_trigger: string;
-}
+  start_date: z.string(),
+  end_date: z.string(),
+  builtup_area_sqft: z.string(),
+  no_of_towers: z.string(),
+  no_of_basements: z.string(),
+  max_floors: z.string(),
+  status: z.string(),
+  // D · Towers
+  towers: z.array(towerSchema),
+  // E · Quality parameters
+  min_cube_samples: z.string(),
+  acceptance_criteria: z.string(),
+  early_test_age_days: z.string(),
+  mid_test_age_days: z.string(),
+  final_test_age_days: z.string(),
+  characteristic_strength_pct: z.string(),
+  ncr_trigger: z.string(),
+});
+type FormValues = z.infer<typeof schema>;
 
-// String-valued mirror of a TowerCreate row.
-interface TowerRowState {
-  _id: string;
-  tower_code: string;
-  tower_name: string;
-  tower_type: string;
-  floors_total: string;
-  no_of_basements: string;
-  floor_height_m: string;
-  start_label: string;
-  construction_start_date: string;
-}
+const EMPTY_TOWER: FormValues['towers'][number] = {
+  tower_code: '',
+  tower_name: '',
+  tower_type: '',
+  floors_total: '',
+  no_of_basements: '',
+  floor_height_m: '',
+  start_label: '',
+  construction_start_date: '',
+};
 
-const INITIAL: ProjectFormState = {
+const DEFAULTS: FormValues = {
   project_name: '',
   project_type: '',
   gst_number: '',
@@ -77,6 +95,7 @@ const INITIAL: ProjectFormState = {
   no_of_basements: '',
   max_floors: '',
   status: 'ACTIVE',
+  towers: [{ ...EMPTY_TOWER }],
   min_cube_samples: '',
   acceptance_criteria: 'IS 456:2000',
   early_test_age_days: '7',
@@ -86,107 +105,83 @@ const INITIAL: ProjectFormState = {
   ncr_trigger: '',
 };
 
-const newTowerRow = (): TowerRowState => ({
-  _id: crypto.randomUUID(),
-  tower_code: '',
-  tower_name: '',
-  tower_type: '',
-  floors_total: '',
-  no_of_basements: '',
-  floor_height_m: '',
-  start_label: '',
-  construction_start_date: '',
-});
-
-// '' → undefined so optional fields are omitted from the JSON payload.
-const str = (v: string): string | undefined => (v.trim() === '' ? undefined : v.trim());
-const num = (v: string): number | undefined => {
-  const t = v.trim();
-  if (t === '') return undefined;
-  const n = Number(t);
-  return Number.isNaN(n) ? undefined : n;
-};
-
 export const ProjectMasterForm: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [form, setForm] = useState<ProjectFormState>(INITIAL);
-  const [towers, setTowers] = useState<TowerRowState[]>([newTowerRow()]);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
+  const createProject = useCreateProject();
+
+  const {
+    register, handleSubmit, control, setError, clearErrors, formState: { errors },
+  } = useForm<FormValues>({ resolver: zodResolver(schema), defaultValues: DEFAULTS });
+
+  const { fields, append, remove } = useFieldArray({ control, name: 'towers' });
+
+  // Project-level caps from section C, applied live to the tower rows below.
+  const noOfTowers = useWatch({ control, name: 'no_of_towers' });
+  const noOfBasements = useWatch({ control, name: 'no_of_basements' });
+  const maxFloorsRaw = useWatch({ control, name: 'max_floors' });
+  const towerValues = useWatch({ control, name: 'towers' });
+
+  const maxFloors = num(maxFloorsRaw ?? '');
+  const maxBasements = num(noOfBasements ?? '');
+  const maxTowers = num(noOfTowers ?? '');
+  const towerLimitReached = maxTowers != null && fields.length >= maxTowers;
+
+  const towerFloorsError = (i: number): string | undefined => {
+    const f = num(towerValues?.[i]?.floors_total ?? '');
+    return maxFloors != null && f != null && f > maxFloors ? `Max ${maxFloors}` : undefined;
+  };
+  const towerBasementsError = (i: number): string | undefined => {
+    const b = num(towerValues?.[i]?.no_of_basements ?? '');
+    return maxBasements != null && b != null && b > maxBasements ? `Max ${maxBasements}` : undefined;
+  };
 
   // Only client admins can create projects — keep others out of this form.
   if (user && user.role !== 'CLIENT_ADMIN') {
     return <Navigate to="/app/projects" replace />;
   }
 
-  const update =
-    (field: keyof ProjectFormState) =>
-    (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
-      setForm((prev) => ({ ...prev, [field]: e.target.value }));
-
-  const updateTower =
-    (id: string, field: keyof Omit<TowerRowState, '_id'>) =>
-    (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
-      setTowers((prev) =>
-        prev.map((t) => (t._id === id ? { ...t, [field]: e.target.value } : t))
-      );
-
-  // Project-level caps from section C, applied live to the tower rows below.
-  const maxFloors = num(form.max_floors);
-  const maxBasements = num(form.no_of_basements);
-  const maxTowers = num(form.no_of_towers);
-  const towerLimitReached = maxTowers != null && towers.length >= maxTowers;
-
-  const towerFloorsError = (t: TowerRowState): string | undefined => {
-    const f = num(t.floors_total);
-    return maxFloors != null && f != null && f > maxFloors ? `Max ${maxFloors}` : undefined;
+  const addTower = () => {
+    if (!towerLimitReached) append({ ...EMPTY_TOWER });
   };
-  const towerBasementsError = (t: TowerRowState): string | undefined => {
-    const b = num(t.no_of_basements);
-    return maxBasements != null && b != null && b > maxBasements ? `Max ${maxBasements}` : undefined;
+  const removeTower = (i: number) => {
+    if (fields.length > 1) remove(i);
   };
 
-  const addTower = () =>
-    setTowers((prev) => (towerLimitReached ? prev : [...prev, newTowerRow()]));
-  const removeTower = (id: string) =>
-    setTowers((prev) => (prev.length === 1 ? prev : prev.filter((t) => t._id !== id)));
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    setSuccess(null);
+  const onSubmit = async (v: FormValues) => {
+    clearErrors('root');
 
     // Cross-field validation: tower rows must stay within the project-level
-    // caps entered above (max floors, basements, tower count).
-    const namedTowers = towers.filter((t) => t.tower_name.trim() !== '');
+    // caps entered above (max floors, basements, tower count). Aggregated into
+    // one banner so the user sees every problem at once.
+    const maxT = num(v.no_of_towers);
+    const maxF = num(v.max_floors);
+    const maxB = num(v.no_of_basements);
+    const namedTowers = v.towers.filter((t) => t.tower_name.trim() !== '');
     const problems: string[] = [];
 
-    if (maxTowers != null && namedTowers.length > maxTowers) {
-      problems.push(`You've added ${namedTowers.length} towers but "No. of Towers" is set to ${maxTowers}.`);
+    if (maxT != null && namedTowers.length > maxT) {
+      problems.push(`You've added ${namedTowers.length} towers but "No. of Towers" is set to ${maxT}.`);
     }
     namedTowers.forEach((t) => {
       const label = t.tower_name.trim();
       const floors = num(t.floors_total);
-      if (maxFloors != null && floors != null && floors > maxFloors) {
-        problems.push(`Tower "${label}" has ${floors} floors, above the project max of ${maxFloors}.`);
+      if (maxF != null && floors != null && floors > maxF) {
+        problems.push(`Tower "${label}" has ${floors} floors, above the project max of ${maxF}.`);
       }
       const basements = num(t.no_of_basements);
-      if (maxBasements != null && basements != null && basements > maxBasements) {
-        problems.push(`Tower "${label}" has ${basements} basements, above the project max of ${maxBasements}.`);
+      if (maxB != null && basements != null && basements > maxB) {
+        problems.push(`Tower "${label}" has ${basements} basements, above the project max of ${maxB}.`);
       }
     });
 
     if (problems.length > 0) {
-      setError(problems.join(' '));
+      setError('root', { message: problems.join(' ') });
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
 
-    setSubmitting(true);
-
-    const towersPayload: TowerCreate[] = towers
+    const towersPayload: TowerCreate[] = v.towers
       .filter((t) => t.tower_name.trim() !== '')
       .map((t) => ({
         tower_name: t.tower_name.trim(),
@@ -200,42 +195,41 @@ export const ProjectMasterForm: React.FC = () => {
       }));
 
     const payload: ProjectCreate = {
-      project_name: form.project_name.trim(),
-      project_type: form.project_type ? (form.project_type as ProjectType) : undefined,
-      project_code: str(form.project_code),
-      status: form.status as ProjectStatus,
-      gst_number: str(form.gst_number),
-      address_line1: str(form.address_line1),
-      address_line2: str(form.address_line2),
-      city: str(form.city),
-      state: str(form.state),
-      pin_code: str(form.pin_code),
-      geo_coordinates: str(form.geo_coordinates),
-      site_area_sqm: num(form.site_area_sqm),
-      start_date: str(form.start_date),
-      end_date: str(form.end_date),
-      builtup_area_sqft: num(form.builtup_area_sqft),
-      no_of_towers: num(form.no_of_towers),
-      no_of_basements: num(form.no_of_basements),
-      max_floors: num(form.max_floors),
-      acceptance_criteria: str(form.acceptance_criteria),
-      min_cube_samples: str(form.min_cube_samples),
-      early_test_age_days: num(form.early_test_age_days),
-      mid_test_age_days: num(form.mid_test_age_days),
-      final_test_age_days: num(form.final_test_age_days),
-      characteristic_strength_pct: num(form.characteristic_strength_pct),
-      ncr_trigger: str(form.ncr_trigger),
+      project_name: v.project_name.trim(),
+      project_type: v.project_type ? (v.project_type as ProjectType) : undefined,
+      project_code: str(v.project_code),
+      status: v.status as ProjectStatus,
+      gst_number: str(v.gst_number),
+      address_line1: str(v.address_line1),
+      address_line2: str(v.address_line2),
+      city: str(v.city),
+      state: str(v.state),
+      pin_code: str(v.pin_code),
+      geo_coordinates: str(v.geo_coordinates),
+      site_area_sqm: num(v.site_area_sqm),
+      start_date: str(v.start_date),
+      end_date: str(v.end_date),
+      builtup_area_sqft: num(v.builtup_area_sqft),
+      no_of_towers: num(v.no_of_towers),
+      no_of_basements: num(v.no_of_basements),
+      max_floors: num(v.max_floors),
+      acceptance_criteria: str(v.acceptance_criteria),
+      min_cube_samples: str(v.min_cube_samples),
+      early_test_age_days: num(v.early_test_age_days),
+      mid_test_age_days: num(v.mid_test_age_days),
+      final_test_age_days: num(v.final_test_age_days),
+      characteristic_strength_pct: num(v.characteristic_strength_pct),
+      ncr_trigger: str(v.ncr_trigger),
       towers: towersPayload,
     };
 
     try {
-      const created = await projectsApi.create(payload);
+      const created = await createProject.mutateAsync(payload);
       // Created — hand off to the projects list, which shows the new project
       // (and a success banner) rather than leaving a blanked form behind.
       navigate('/app/projects', { state: { created: created.project_name } });
     } catch (err) {
-      setError(getApiErrorMessage(err, 'Unable to create project. Please try again.'));
-      setSubmitting(false);
+      setError('root', { message: getApiErrorMessage(err, 'Unable to create project. Please try again.') });
     }
   };
 
@@ -247,7 +241,7 @@ export const ProjectMasterForm: React.FC = () => {
   };
 
   return (
-    <form className="qms-form-page" onSubmit={handleSubmit}>
+    <form className="qms-form-page" onSubmit={handleSubmit(onSubmit)} noValidate>
       <div className="qms-page-header-block">
         <div>
           <h1 className="qms-page-title-main">New Project</h1>
@@ -255,14 +249,9 @@ export const ProjectMasterForm: React.FC = () => {
         </div>
       </div>
 
-      {error && (
+      {errors.root && (
         <div style={{ ...alertStyle, background: '#FEE2E2', color: '#991B1B', border: '1px solid #FCA5A5' }}>
-          {error}
-        </div>
-      )}
-      {success && (
-        <div style={{ ...alertStyle, background: '#DCFCE7', color: '#166534', border: '1px solid #86EFAC' }}>
-          {success}
+          {errors.root.message}
         </div>
       )}
 
@@ -273,9 +262,9 @@ export const ProjectMasterForm: React.FC = () => {
         </div>
         <div className="qms-grid-2">
           <Input label="Project ID" value="Auto-generated on submit" readOnly disabled />
-          <Input label="Project Name" required placeholder="e.g. Godrej Splendour Phase 2" value={form.project_name} onChange={update('project_name')} />
+          <Input label="Project Name" required placeholder="e.g. Godrej Splendour Phase 2" error={errors.project_name?.message} {...register('project_name')} />
 
-          <Select label="Project Type" value={form.project_type} onChange={update('project_type')} options={[
+          <Select label="Project Type" {...register('project_type')} options={[
             { label: 'Select type…', value: '' },
             { label: 'Residential', value: 'RESIDENTIAL' },
             { label: 'Commercial', value: 'COMMERCIAL' },
@@ -287,8 +276,8 @@ export const ProjectMasterForm: React.FC = () => {
           <Input label="Client Admin Name" placeholder="Derived from your account" disabled />
           <Input label="Client Admin Email" type="email" placeholder="Derived from your account" disabled />
 
-          <Input label="GST Number" placeholder="27AABCG1234A1Z5" value={form.gst_number} onChange={update('gst_number')} />
-          <Input label="Project Code / RERA" placeholder="P51700049510" value={form.project_code} onChange={update('project_code')} />
+          <Input label="GST Number" placeholder="27AABCG1234A1Z5" {...register('gst_number')} />
+          <Input label="Project Code / RERA" placeholder="P51700049510" {...register('project_code')} />
         </div>
       </Card>
 
@@ -298,11 +287,11 @@ export const ProjectMasterForm: React.FC = () => {
           <ChevronUp size={16} className="text-muted" />
         </div>
         <div className="qms-grid-2">
-          <Input label="Address Line 1" placeholder="Plot / Survey number" value={form.address_line1} onChange={update('address_line1')} />
-          <Input label="Address Line 2" placeholder="Street / Road" value={form.address_line2} onChange={update('address_line2')} />
+          <Input label="Address Line 1" placeholder="Plot / Survey number" {...register('address_line1')} />
+          <Input label="Address Line 2" placeholder="Street / Road" {...register('address_line2')} />
 
-          <Input label="City" value={form.city} onChange={update('city')} />
-          <Select label="State" value={form.state} onChange={update('state')} options={[
+          <Input label="City" {...register('city')} />
+          <Select label="State" {...register('state')} options={[
             { label: 'Select state…', value: '' },
             { label: 'Maharashtra', value: 'MH' },
             { label: 'Karnataka', value: 'KA' },
@@ -310,10 +299,10 @@ export const ProjectMasterForm: React.FC = () => {
             { label: 'Others', value: 'Others' },
           ]} />
 
-          <Input label="PIN Code" type="number" value={form.pin_code} onChange={update('pin_code')} />
-          <Input label="Geo-coordinates" placeholder="12.9716, 77.5946" value={form.geo_coordinates} onChange={update('geo_coordinates')} />
+          <Input label="PIN Code" type="number" {...register('pin_code')} />
+          <Input label="Geo-coordinates" placeholder="12.9716, 77.5946" {...register('geo_coordinates')} />
 
-          <Input label="Site Area (sqm)" type="number" value={form.site_area_sqm} onChange={update('site_area_sqm')} />
+          <Input label="Site Area (sqm)" type="number" {...register('site_area_sqm')} />
         </div>
       </Card>
 
@@ -323,16 +312,16 @@ export const ProjectMasterForm: React.FC = () => {
           <ChevronUp size={16} className="text-muted" />
         </div>
         <div className="qms-grid-2">
-          <Input label="Project Start Date" type="date" value={form.start_date} onChange={update('start_date')} />
-          <Input label="Project End Date" type="date" value={form.end_date} onChange={update('end_date')} />
+          <Input label="Project Start Date" type="date" {...register('start_date')} />
+          <Input label="Project End Date" type="date" {...register('end_date')} />
 
-          <Input label="Total Built-up Area (sqft)" type="number" value={form.builtup_area_sqft} onChange={update('builtup_area_sqft')} />
-          <Input label="No. of Towers" type="number" value={form.no_of_towers} onChange={update('no_of_towers')} />
+          <Input label="Total Built-up Area (sqft)" type="number" {...register('builtup_area_sqft')} />
+          <Input label="No. of Towers" type="number" {...register('no_of_towers')} />
 
-          <Input label="No. of Basements (Max)" type="number" value={form.no_of_basements} onChange={update('no_of_basements')} />
-          <Input label="No. of Floors (Max)" type="number" value={form.max_floors} onChange={update('max_floors')} />
+          <Input label="No. of Basements (Max)" type="number" {...register('no_of_basements')} />
+          <Input label="No. of Floors (Max)" type="number" {...register('max_floors')} />
 
-          <Select label="Project Status" required value={form.status} onChange={update('status')} options={[
+          <Select label="Project Status" required {...register('status')} options={[
             { label: 'Active', value: 'ACTIVE' },
             { label: 'On Hold', value: 'ON_HOLD' },
             { label: 'Completed', value: 'COMPLETED' },
@@ -364,21 +353,21 @@ export const ProjectMasterForm: React.FC = () => {
               </tr>
             </thead>
             <tbody>
-              {towers.map((t) => (
-                <tr key={t._id}>
-                  <td><Input value={t.tower_code} onChange={updateTower(t._id, 'tower_code')} /></td>
-                  <td><Input value={t.tower_name} onChange={updateTower(t._id, 'tower_name')} /></td>
-                  <td><Select value={t.tower_type} onChange={updateTower(t._id, 'tower_type')} options={[
+              {fields.map((field, i) => (
+                <tr key={field.id}>
+                  <td><Input {...register(`towers.${i}.tower_code`)} /></td>
+                  <td><Input {...register(`towers.${i}.tower_name`)} /></td>
+                  <td><Select {...register(`towers.${i}.tower_type`)} options={[
                     { label: '—', value: '' },
                     { label: 'Residential', value: 'Residential' },
                     { label: 'Commercial', value: 'Commercial' },
                   ]} /></td>
-                  <td><Input type="number" min={0} max={maxFloors} value={t.floors_total} onChange={updateTower(t._id, 'floors_total')} error={towerFloorsError(t)} /></td>
-                  <td><Input type="number" min={0} max={maxBasements} value={t.no_of_basements} onChange={updateTower(t._id, 'no_of_basements')} error={towerBasementsError(t)} /></td>
-                  <td><Input type="number" value={t.floor_height_m} onChange={updateTower(t._id, 'floor_height_m')} /></td>
-                  <td><Input value={t.start_label} onChange={updateTower(t._id, 'start_label')} /></td>
-                  <td><Input type="date" value={t.construction_start_date} onChange={updateTower(t._id, 'construction_start_date')} /></td>
-                  <td><Button type="button" variant="ghost" onClick={() => removeTower(t._id)} icon={<Trash2 size={16} className="text-danger" />} /></td>
+                  <td><Input type="number" min={0} max={maxFloors} error={towerFloorsError(i)} {...register(`towers.${i}.floors_total`)} /></td>
+                  <td><Input type="number" min={0} max={maxBasements} error={towerBasementsError(i)} {...register(`towers.${i}.no_of_basements`)} /></td>
+                  <td><Input type="number" {...register(`towers.${i}.floor_height_m`)} /></td>
+                  <td><Input {...register(`towers.${i}.start_label`)} /></td>
+                  <td><Input type="date" {...register(`towers.${i}.construction_start_date`)} /></td>
+                  <td><Button type="button" variant="ghost" onClick={() => removeTower(i)} icon={<Trash2 size={16} className="text-danger" />} /></td>
                 </tr>
               ))}
             </tbody>
@@ -398,26 +387,26 @@ export const ProjectMasterForm: React.FC = () => {
           <ChevronUp size={16} className="text-muted" />
         </div>
         <div className="qms-grid-2">
-          <Input label="Min Cube Samples" placeholder="3 per 50m³ or part thereof" value={form.min_cube_samples} onChange={update('min_cube_samples')} />
-          <Select label="Acceptance Criteria" value={form.acceptance_criteria} onChange={update('acceptance_criteria')} options={[
+          <Input label="Min Cube Samples" placeholder="3 per 50m³ or part thereof" {...register('min_cube_samples')} />
+          <Select label="Acceptance Criteria" {...register('acceptance_criteria')} options={[
             { label: 'IS 456:2000', value: 'IS 456:2000' },
             { label: 'ACI 318', value: 'ACI 318' }
           ]} />
 
-          <Select label="Early Test Age (days)" value={form.early_test_age_days} onChange={update('early_test_age_days')} options={[{ label: '7', value: '7' }, { label: '3', value: '3' }]} />
-          <Select label="Mid Test Age (days)" value={form.mid_test_age_days} onChange={update('mid_test_age_days')} options={[{ label: '—', value: '' }, { label: '14', value: '14' }]} />
+          <Select label="Early Test Age (days)" {...register('early_test_age_days')} options={[{ label: '7', value: '7' }, { label: '3', value: '3' }]} />
+          <Select label="Mid Test Age (days)" {...register('mid_test_age_days')} options={[{ label: '—', value: '' }, { label: '14', value: '14' }]} />
 
-          <Select label="Final Test Age (days)" value={form.final_test_age_days} onChange={update('final_test_age_days')} options={[{ label: '28', value: '28' }]} />
-          <Input label="Characteristic Strength %" type="number" placeholder="65" value={form.characteristic_strength_pct} onChange={update('characteristic_strength_pct')} />
+          <Select label="Final Test Age (days)" {...register('final_test_age_days')} options={[{ label: '28', value: '28' }]} />
+          <Input label="Characteristic Strength %" type="number" placeholder="65" {...register('characteristic_strength_pct')} />
 
-          <Input label="NCR Trigger" placeholder="QA Manager + Project Manager + PMC" value={form.ncr_trigger} onChange={update('ncr_trigger')} />
+          <Input label="NCR Trigger" placeholder="QA Manager + Project Manager + PMC" {...register('ncr_trigger')} />
         </div>
       </Card>
 
       <div className="qms-form-footer">
         <div className="text-muted qms-text-sm"><span className="text-danger">*</span> Mandatory field</div>
-        <Button type="submit" variant="primary" disabled={submitting}>
-          {submitting ? 'Creating…' : 'Create Project'}
+        <Button type="submit" variant="primary" disabled={createProject.isPending}>
+          {createProject.isPending ? 'Creating…' : 'Create Project'}
         </Button>
       </div>
     </form>

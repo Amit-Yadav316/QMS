@@ -27,18 +27,18 @@ import { SupplierDetail } from './pages/project/SupplierDetail';
 import { ProjectLabs } from './pages/project/ProjectLabs';
 import { ProjectMixDesigns } from './pages/project/ProjectMixDesigns';
 import { ProjectFloors } from './pages/project/ProjectFloors';
-import { Analytics } from './pages/Analytics';
+import { Analytics } from './pages/project/Analytics';
 import { ProjectDocuments } from './pages/project/ProjectDocuments';
-import { AuditManagement } from './pages/AuditManagement';
-import { Traceability } from './pages/Traceability';
-import { PourCardForm } from './pages/PourCardForm';
+import { AuditManagement } from './pages/project/AuditManagement';
+import { Traceability } from './pages/project/Traceability';
+import { PourCardForm } from './pages/project/PourCardForm';
 import { ProjectPours } from './pages/project/ProjectPours';
 import { ProjectDispatches } from './pages/project/ProjectDispatches';
 import { ProjectCubeTests } from './pages/project/ProjectCubeTests';
-import { GateScan } from './pages/GateScan';
-import { NCRDashboard } from './pages/NCRDashboard';
-import { NCRForm } from './pages/NCRForm';
-import { Chatbot } from './pages/Chatbot';
+import { GateScan } from './pages/project/GateScan';
+import { NCRDashboard } from './pages/project/NCRDashboard';
+import { NCRForm } from './pages/project/NCRForm';
+import { Chatbot } from './pages/project/Chatbot';
 
 function App() {
   return (

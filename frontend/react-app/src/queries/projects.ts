@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { projectsApi } from '../api/projects';
+import type { ProjectCreate } from '../types/master';
 
 export const projectKeys = {
   list: () => ['projects'] as const,
@@ -9,6 +10,14 @@ export const projectKeys = {
 
 export const useProjects = () =>
   useQuery({ queryKey: projectKeys.list(), queryFn: () => projectsApi.list() });
+
+export const useCreateProject = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: ProjectCreate) => projectsApi.create(data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: projectKeys.list() }),
+  });
+};
 
 export const useProjectDetail = (id: number) =>
   useQuery({ queryKey: projectKeys.detail(id), queryFn: () => projectsApi.detail(id) });

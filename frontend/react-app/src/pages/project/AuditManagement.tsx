@@ -1,8 +1,8 @@
 import React from 'react';
 import { Calendar, CheckSquare, Clock, FileText, ArrowRight, ShieldAlert, AlertTriangle } from 'lucide-react';
-import { Card } from '../components/ui/Card';
-import { Button } from '../components/ui/Button';
-import { Badge } from '../components/ui/Badge';
+import { Card } from '../../components/ui/Card';
+import { Button } from '../../components/ui/Button';
+import { Badge } from '../../components/ui/Badge';
 import './AuditManagement.css';
 
 const UPCOMING_AUDITS = [

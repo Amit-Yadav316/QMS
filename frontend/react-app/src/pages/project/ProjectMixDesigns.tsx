@@ -1,4 +1,7 @@
 import React, { useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import { Plus } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
@@ -9,23 +12,23 @@ import { ErrorBox } from '../../components/ui/ErrorBox';
 import { useProject } from '../../components/layout/ProjectLayout';
 import { getApiErrorMessage } from '../../api/client';
 import { toast } from '../../lib/toast';
+import { num } from '../../lib/coerce';
 import { useCreateMixDesign, useMixDesigns } from '../../queries/mixDesigns';
 import { useSuppliers } from '../../queries/suppliers';
 import { useGrades } from '../../queries/catalog';
-import type { MixApprovalStatus, MixDesignCreate } from '../../types/master';
+import type { MixApprovalStatus } from '../../types/master';
 
 const APPROVAL_VARIANT: Record<MixApprovalStatus, 'pass' | 'fail' | 'warn'> = {
   APPROVED: 'pass', REJECTED: 'fail', IN_PROGRESS: 'warn',
 };
 
-const num = (v: string): number | undefined => {
-  const t = v.trim();
-  if (t === '') return undefined;
-  const n = Number(t);
-  return Number.isNaN(n) ? undefined : n;
-};
-
-const EMPTY = { supplier_id: '', grade_id: '', wc_ratio: '', approval_status: 'IN_PROGRESS' as MixApprovalStatus };
+const schema = z.object({
+  supplier_id: z.string().min(1, 'Select a supplier'),
+  grade_id: z.string().min(1, 'Select a grade'),
+  wc_ratio: z.string(),
+  approval_status: z.enum(['IN_PROGRESS', 'APPROVED', 'REJECTED']),
+});
+type FormValues = z.infer<typeof schema>;
 
 export const ProjectMixDesigns: React.FC = () => {
   const { project } = useProject();
@@ -37,31 +40,35 @@ export const ProjectMixDesigns: React.FC = () => {
   const { data: grades = [] } = useGrades();
   const createMixDesign = useCreateMixDesign(pid);
 
-  const [form, setForm] = useState({ ...EMPTY });
   const [showForm, setShowForm] = useState(false);
 
-  const set = (k: keyof typeof EMPTY) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
-    setForm((p) => ({ ...p, [k]: e.target.value }));
+  const {
+    register, handleSubmit, reset, formState: { errors },
+  } = useForm<FormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: { supplier_id: '', grade_id: '', wc_ratio: '', approval_status: 'IN_PROGRESS' },
+  });
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const payload: MixDesignCreate = {
-      supplier_id: Number(form.supplier_id),
-      grade_id: Number(form.grade_id),
-      wc_ratio: num(form.wc_ratio),
-      approval_status: form.approval_status,
-    };
+  const closeForm = () => {
+    reset();
+    setShowForm(false);
+  };
+
+  const onSubmit = async (v: FormValues) => {
     try {
-      const md = await createMixDesign.mutateAsync(payload);
+      const md = await createMixDesign.mutateAsync({
+        supplier_id: Number(v.supplier_id),
+        grade_id: Number(v.grade_id),
+        wc_ratio: num(v.wc_ratio),
+        approval_status: v.approval_status,
+      });
       toast.success(`Mix design for ${md.grade_name} (${md.supplier_name}) added.`);
-      setForm({ ...EMPTY });
+      reset();
       setShowForm(false);
     } catch (err) {
       toast.error(getApiErrorMessage(err, 'Unable to add mix design.'));
     }
   };
-
-  const canAdd = form.supplier_id !== '' && form.grade_id !== '';
 
   return (
     <div>
@@ -75,23 +82,23 @@ export const ProjectMixDesigns: React.FC = () => {
               <p className="text-muted qms-mb-12">
                 Register a supplier first — mix designs are tied to a supplier and grade.
               </p>
-              <Button type="button" variant="ghost" onClick={() => setShowForm(false)}>Cancel</Button>
+              <Button type="button" variant="ghost" onClick={closeForm}>Cancel</Button>
             </div>
           ) : (
-            <form onSubmit={handleSubmit} className="qms-grid-2">
+            <form onSubmit={handleSubmit(onSubmit)} className="qms-grid-2" noValidate>
               <Select
-                label="Supplier" required value={form.supplier_id} onChange={set('supplier_id')}
+                label="Supplier" required error={errors.supplier_id?.message} {...register('supplier_id')}
                 options={[{ label: 'Select a supplier…', value: '' },
                   ...suppliers.map((s) => ({ label: s.supplier_name, value: s.supplier_id }))]}
               />
               <Select
-                label="Grade" required value={form.grade_id} onChange={set('grade_id')}
+                label="Grade" required error={errors.grade_id?.message} {...register('grade_id')}
                 options={[{ label: 'Select a grade…', value: '' },
                   ...grades.map((g) => ({ label: g.grade_name, value: g.grade_id }))]}
               />
-              <Input label="W/C ratio" type="number" step="0.01" value={form.wc_ratio} onChange={set('wc_ratio')} placeholder="e.g. 0.42" />
+              <Input label="W/C ratio" type="number" step="0.01" placeholder="e.g. 0.42" {...register('wc_ratio')} />
               <Select
-                label="Approval status" value={form.approval_status} onChange={set('approval_status')}
+                label="Approval status" {...register('approval_status')}
                 options={[
                   { label: 'In progress', value: 'IN_PROGRESS' },
                   { label: 'Approved', value: 'APPROVED' },
@@ -99,10 +106,10 @@ export const ProjectMixDesigns: React.FC = () => {
                 ]}
               />
               <div className="qms-form-actions qms-grid-span-2">
-                <Button type="submit" variant="primary" disabled={createMixDesign.isPending || !canAdd} icon={<Plus size={16} />}>
+                <Button type="submit" variant="primary" disabled={createMixDesign.isPending} icon={<Plus size={16} />}>
                   {createMixDesign.isPending ? 'Adding…' : 'Add mix design'}
                 </Button>
-                <Button type="button" variant="ghost" disabled={createMixDesign.isPending} onClick={() => setShowForm(false)}>
+                <Button type="button" variant="ghost" disabled={createMixDesign.isPending} onClick={closeForm}>
                   Cancel
                 </Button>
               </div>

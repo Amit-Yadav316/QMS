@@ -10,9 +10,8 @@ import { useProject } from '../../components/layout/ProjectLayout';
 import { getApiErrorMessage } from '../../api/client';
 import { toast } from '../../lib/toast';
 import { useCreateLab, useLabs, useResendLabConfirmation } from '../../queries/labs';
+import { str } from '../../lib/coerce';
 import type { ConfirmationStatus, LabCreate, LabResponse, LabType } from '../../types/master';
-
-const str = (v: string): string | undefined => (v.trim() === '' ? undefined : v.trim());
 
 const CONF_VARIANT: Record<ConfirmationStatus, 'pass' | 'warn' | 'fail'> = {
   CONFIRMED: 'pass', PENDING: 'warn', DECLINED: 'fail',

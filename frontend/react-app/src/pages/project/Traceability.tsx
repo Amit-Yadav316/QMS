@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { Badge } from '../components/ui/Badge';
+import { Badge } from '../../components/ui/Badge';
 import { CheckCircle, ChevronRight, Clock, Search, XCircle } from 'lucide-react';
-import { useProject } from '../components/layout/ProjectLayout';
-import { useDebouncedValue } from '../hooks/useDebouncedValue';
-import { useTraceDetail, useTraceSearch } from '../queries/traceability';
-import type { TraceDetail } from '../types/master';
+import { useProject } from '../../components/layout/ProjectLayout';
+import { useDebouncedValue } from '../../hooks/useDebouncedValue';
+import { useTraceDetail, useTraceSearch } from '../../queries/traceability';
+import type { TraceDetail } from '../../types/master';
 import './Traceability.css';
 
 type BadgeVariant = 'pass' | 'fail' | 'pending';

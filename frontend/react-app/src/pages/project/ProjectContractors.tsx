@@ -6,6 +6,7 @@ import { Select } from '../../components/ui/Select';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
 import { ErrorBox } from '../../components/ui/ErrorBox';
+import { Dialog } from '../../components/ui/Dialog';
 import { Plus, FlaskConical, Factory, ChevronRight, AlertTriangle } from 'lucide-react';
 import { useProject } from '../../components/layout/ProjectLayout';
 import { getApiErrorMessage } from '../../api/client';
@@ -264,37 +265,13 @@ export const ProjectContractors: React.FC = () => {
       </Card>
 
       {confirmTarget && (
-        <div
-          role="presentation"
-          className="qms-modal-overlay"
-          onClick={() => !submitting && setConfirmTarget(null)}
-        >
-          <Card className="qms-modal-card" role="dialog" aria-modal="true" aria-label="Contractor already engaged" onClick={(e) => e.stopPropagation()}>
-            <div className="qms-modal-head">
-              <span className="text-warning qms-modal-icon"><AlertTriangle size={20} /></span>
-              <h3 className="qms-section-heading-plain qms-detail-msg">Contractor already engaged</h3>
-            </div>
-            <p className="qms-text-sm qms-detail-msg">
-              <strong>{confirmTarget.org_name}</strong> is currently engaged on:
-            </p>
-            <ul className="qms-modal-engagements">
-              {confirmTarget.engagements.map((eng) => (
-                <li key={eng.project_id} className="qms-modal-engagement">
-                  <div className="qms-detail-group-head qms-detail-msg">
-                    <span className="font-medium qms-text-sm">{eng.project_name}</span>
-                    <Badge variant={STATUS_BADGE[eng.status].variant}>{STATUS_BADGE[eng.status].label}</Badge>
-                  </div>
-                  <div className="qms-text-sm text-muted">
-                    {fmtDate(eng.start_date)} → {fmtDate(eng.end_date)}
-                  </div>
-                </li>
-              ))}
-            </ul>
-            <p className="qms-text-sm text-muted qms-detail-msg">
-              You can still assign them. Note their contractor users (project managers, quality engineers,
-              supervisors) on this project must be different from those on their other projects.
-            </p>
-            <div className="qms-modal-actions">
+        <Dialog
+          open
+          onOpenChange={(o) => { if (!o && !submitting) setConfirmTarget(null); }}
+          title="Contractor already engaged"
+          icon={<span className="text-warning qms-modal-icon"><AlertTriangle size={20} /></span>}
+          footer={
+            <>
               <Button variant="ghost" disabled={submitting} onClick={() => setConfirmTarget(null)}>Cancel</Button>
               <Button
                 variant="primary"
@@ -303,9 +280,30 @@ export const ProjectContractors: React.FC = () => {
               >
                 {submitting ? 'Assigning…' : 'Assign anyway'}
               </Button>
-            </div>
-          </Card>
-        </div>
+            </>
+          }
+        >
+          <p className="qms-text-sm qms-detail-msg">
+            <strong>{confirmTarget.org_name}</strong> is currently engaged on:
+          </p>
+          <ul className="qms-modal-engagements">
+            {confirmTarget.engagements.map((eng) => (
+              <li key={eng.project_id} className="qms-modal-engagement">
+                <div className="qms-detail-group-head qms-detail-msg">
+                  <span className="font-medium qms-text-sm">{eng.project_name}</span>
+                  <Badge variant={STATUS_BADGE[eng.status].variant}>{STATUS_BADGE[eng.status].label}</Badge>
+                </div>
+                <div className="qms-text-sm text-muted">
+                  {fmtDate(eng.start_date)} → {fmtDate(eng.end_date)}
+                </div>
+              </li>
+            ))}
+          </ul>
+          <p className="qms-text-sm text-muted qms-detail-msg">
+            You can still assign them. Note their contractor users (project managers, quality engineers,
+            supervisors) on this project must be different from those on their other projects.
+          </p>
+        </Dialog>
       )}
     </div>
   );

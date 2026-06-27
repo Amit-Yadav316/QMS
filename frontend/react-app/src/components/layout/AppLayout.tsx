@@ -2,6 +2,7 @@ import React from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Topbar } from './Topbar';
+import { ConfirmProvider } from '../ui/ConfirmDialog';
 
 const SEGMENT_TITLES: Record<string, string> = {
   projects: 'Projects',
@@ -36,14 +37,16 @@ export const AppLayout: React.FC = () => {
   const title = deriveTitle(location.pathname);
 
   return (
-    <div className="app-container">
-      <Sidebar />
-      <div className="main-content">
-        <Topbar title={title} />
-        <main className="content-area animate-in">
-          <Outlet />
-        </main>
+    <ConfirmProvider>
+      <div className="app-container">
+        <Sidebar />
+        <div className="main-content">
+          <Topbar title={title} />
+          <main className="content-area animate-in">
+            <Outlet />
+          </main>
+        </div>
       </div>
-    </div>
+    </ConfirmProvider>
   );
 };

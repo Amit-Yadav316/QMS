@@ -8,15 +8,15 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   icon?: React.ReactNode;
 }
 
-export const Button: React.FC<ButtonProps> = ({ 
-  children, 
-  variant = 'primary', 
-  size = 'md', 
+export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(({
+  children,
+  variant = 'primary',
+  size = 'md',
   fullWidth = false,
   icon,
   className = '',
-  ...props 
-}) => {
+  ...props
+}, ref) => {
   const baseClass = 'qms-btn';
   const classes = [
     baseClass,
@@ -27,9 +27,10 @@ export const Button: React.FC<ButtonProps> = ({
   ].filter(Boolean).join(' ');
 
   return (
-    <button className={classes} {...props}>
+    <button ref={ref} className={classes} {...props}>
       {icon && <span className="qms-btn-icon">{icon}</span>}
       {children}
     </button>
   );
-};
+});
+Button.displayName = 'Button';

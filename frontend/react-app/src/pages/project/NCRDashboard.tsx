@@ -1,13 +1,13 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle } from 'lucide-react';
-import { Card } from '../components/ui/Card';
-import { useProject } from '../components/layout/ProjectLayout';
-import { useAuth } from '../hooks/useAuth';
-import { getApiErrorMessage } from '../api/client';
-import { ErrorBox } from '../components/ui/ErrorBox';
-import { NCRList } from '../components/ncr/NCRList';
-import { useNcrList } from '../components/ncr/queries';
-import '../components/ncr/ncr.css';
+import { Card } from '../../components/ui/Card';
+import { useProject } from '../../components/layout/ProjectLayout';
+import { useAuth } from '../../hooks/useAuth';
+import { getApiErrorMessage } from '../../api/client';
+import { ErrorBox } from '../../components/ui/ErrorBox';
+import { NCRList } from '../../components/ncr/NCRList';
+import { useNcrList } from '../../components/ncr/queries';
+import '../../components/ncr/ncr.css';
 
 export const NCRDashboard: React.FC = () => {
   const { project } = useProject();

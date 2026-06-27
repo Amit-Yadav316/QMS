@@ -10,6 +10,7 @@ import { useProject } from '../../components/layout/ProjectLayout';
 import { useAuth } from '../../hooks/useAuth';
 import { getApiErrorMessage } from '../../api/client';
 import { toast } from '../../lib/toast';
+import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { projectRoleLabel } from '../../lib/roles';
 import { useAssignMember, useProjectMembers, useSetMemberActive } from '../../queries/team';
 import type { ProjectMember, ProjectMemberStatus, ProjectRoleValue } from '../../types/master';
@@ -45,6 +46,7 @@ export const ProjectTeam: React.FC = () => {
   const { data: members = [], isPending, error: loadError } = useProjectMembers(pid);
   const assign = useAssignMember(pid);
   const setActive = useSetMemberActive(pid);
+  const confirm = useConfirm();
 
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<ProjectRoleValue | ''>(assignable[0] ?? '');
@@ -65,7 +67,12 @@ export const ProjectTeam: React.FC = () => {
   const toggleMember = async (m: ProjectMember) => {
     if (m.user_id == null) return;
     const deactivate = m.status !== 'DEACTIVATED';
-    if (deactivate && !window.confirm(`Deactivate ${m.full_name ?? m.email}? They'll immediately lose access until reactivated.`)) {
+    if (deactivate && !(await confirm({
+      title: 'Deactivate member?',
+      description: `${m.full_name ?? m.email} will immediately lose access until reactivated.`,
+      confirmLabel: 'Deactivate',
+      danger: true,
+    }))) {
       return;
     }
     try {

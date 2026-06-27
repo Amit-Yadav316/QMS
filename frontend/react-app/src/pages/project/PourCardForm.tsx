@@ -6,19 +6,19 @@ import { Navigate, useNavigate } from 'react-router-dom';
 import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Card } from '../components/ui/Card';
-import { Input } from '../components/ui/Input';
-import { Select } from '../components/ui/Select';
-import { Button } from '../components/ui/Button';
-import { ErrorBox } from '../components/ui/ErrorBox';
-import { useAuth } from '../hooks/useAuth';
-import { useProject } from '../components/layout/ProjectLayout';
-import { getApiErrorMessage } from '../api/client';
-import { toast } from '../lib/toast';
-import { useProjectTowers, useFloors } from '../queries/floors';
-import { useGrades, useComponents } from '../queries/catalog';
-import { useSuppliers } from '../queries/suppliers';
-import { useCreatePour } from '../queries/pours';
+import { Card } from '../../components/ui/Card';
+import { Input } from '../../components/ui/Input';
+import { Select } from '../../components/ui/Select';
+import { Button } from '../../components/ui/Button';
+import { ErrorBox } from '../../components/ui/ErrorBox';
+import { useAuth } from '../../hooks/useAuth';
+import { useProject } from '../../components/layout/ProjectLayout';
+import { getApiErrorMessage } from '../../api/client';
+import { toast } from '../../lib/toast';
+import { useProjectTowers, useFloors } from '../../queries/floors';
+import { useGrades, useComponents } from '../../queries/catalog';
+import { useSuppliers } from '../../queries/suppliers';
+import { useCreatePour } from '../../queries/pours';
 
 const COMPONENT_LABEL: Record<string, string> = {
   COLUMN: 'Column', SLAB: 'Slab', BEAM: 'Beam', RAFT: 'Raft',
@@ -106,7 +106,7 @@ export const PourCardForm: React.FC = () => {
   };
 
   return (
-    <form className="qms-pour-form" onSubmit={handleSubmit(onSubmit)}>
+    <form className="qms-pour-form" onSubmit={handleSubmit(onSubmit)} noValidate>
       {towersError && <ErrorBox>{getApiErrorMessage(towersError, 'Unable to load reference data.')}</ErrorBox>}
 
       <Card className="qms-form-section">

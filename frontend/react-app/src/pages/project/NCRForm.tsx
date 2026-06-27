@@ -1,12 +1,12 @@
 import React from 'react';
 import { Navigate, useParams } from 'react-router-dom';
-import { Card } from '../components/ui/Card';
-import { Input } from '../components/ui/Input';
-import { Select } from '../components/ui/Select';
-import { Button } from '../components/ui/Button';
+import { Card } from '../../components/ui/Card';
+import { Input } from '../../components/ui/Input';
+import { Select } from '../../components/ui/Select';
+import { Button } from '../../components/ui/Button';
 import { ChevronUp, AlertTriangle } from 'lucide-react';
-import { useAuth } from '../hooks/useAuth';
-import './ProjectMasterForm.css';
+import { useAuth } from '../../hooks/useAuth';
+import '../ProjectMasterForm.css';
 
 export const NCRForm: React.FC = () => {
   const { user } = useAuth();
