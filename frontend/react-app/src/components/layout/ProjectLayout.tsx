@@ -3,12 +3,13 @@
 // via the router Outlet context. The nav itself lives in the (project-aware)
 // Sidebar.
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React from 'react';
 import { Outlet, useNavigate, useOutletContext, useParams } from 'react-router-dom';
 import { ChevronLeft } from 'lucide-react';
 import { Badge } from '../ui/Badge';
-import { projectsApi } from '../../api/projects';
+import { ErrorBox } from '../ui/ErrorBox';
 import { getApiErrorMessage } from '../../api/client';
+import { useProjectDetail } from '../../queries/projects';
 import type { ProjectDetail } from '../../types/master';
 import './ProjectLayout.css';
 
@@ -39,38 +40,18 @@ export const ProjectLayout: React.FC = () => {
   const navigate = useNavigate();
   const id = Number(projectId);
 
-  const [project, setProject] = useState<ProjectDetail | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data: project, isPending, error, refetch } = useProjectDetail(id);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      setProject(await projectsApi.detail(id));
-    } catch (err) {
-      setError(getApiErrorMessage(err, 'Unable to load this project.'));
-    } finally {
-      setLoading(false);
-    }
-  }, [id]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  if (loading) {
+  if (isPending) {
     return <div className="qms-form-page"><p className="text-muted">Loading project…</p></div>;
   }
   if (error || !project) {
     return (
       <div className="qms-form-page">
-        <button className="qms-pw-back" onClick={() => navigate('/app/projects')}>
+        <button type="button" className="qms-pw-back" onClick={() => navigate('/app/projects')}>
           <ChevronLeft size={16} /> Back to projects
         </button>
-        <div style={{ padding: '12px 16px', borderRadius: 8, background: '#FEE2E2', color: '#991B1B', border: '1px solid #FCA5A5', fontSize: 14 }}>
-          {error ?? 'Project not found.'}
-        </div>
+        <ErrorBox>{error ? getApiErrorMessage(error, 'Unable to load this project.') : 'Project not found.'}</ErrorBox>
       </div>
     );
   }
@@ -91,7 +72,7 @@ export const ProjectLayout: React.FC = () => {
           </Badge>
         </div>
 
-        <Outlet context={{ project, reload: load } satisfies ProjectCtx} />
+        <Outlet context={{ project, reload: () => { void refetch(); } } satisfies ProjectCtx} />
       </div>
     </div>
   );

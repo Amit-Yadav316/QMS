@@ -2,8 +2,9 @@ import React, { useEffect, useState } from 'react';
 import { Badge } from '../components/ui/Badge';
 import { CheckCircle, ChevronRight, Clock, Search, XCircle } from 'lucide-react';
 import { useProject } from '../components/layout/ProjectLayout';
-import { traceabilityApi } from '../api/traceability';
-import type { TraceDetail, TraceRecord } from '../types/master';
+import { useDebouncedValue } from '../hooks/useDebouncedValue';
+import { useTraceDetail, useTraceSearch } from '../queries/traceability';
+import type { TraceDetail } from '../types/master';
 import './Traceability.css';
 
 type BadgeVariant = 'pass' | 'fail' | 'pending';
@@ -91,36 +92,22 @@ export const Traceability: React.FC = () => {
   const pid = project.project_id;
 
   const [query, setQuery] = useState('');
-  const [records, setRecords] = useState<TraceRecord[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
-  const [detail, setDetail] = useState<TraceDetail | null>(null);
 
   // Debounced search — empty query returns the project's most recent samples.
-  useEffect(() => {
-    let cancelled = false;
-    const handle = setTimeout(async () => {
-      const rows = await traceabilityApi.search(pid, query).catch(() => []);
-      if (cancelled) return;
-      setRecords(rows);
-      setSelectedId((cur) =>
-        cur != null && rows.some((r) => r.sample_id === cur) ? cur : rows[0]?.sample_id ?? null,
-      );
-    }, 250);
-    return () => { cancelled = true; clearTimeout(handle); };
-  }, [pid, query]);
+  const debouncedQuery = useDebouncedValue(query, 250);
+  const { data: records = [] } = useTraceSearch(pid, debouncedQuery);
+  const { data: detail = null } = useTraceDetail(pid, selectedId);
 
+  // Keep the selection valid as the result set changes (default to the first).
   useEffect(() => {
-    if (selectedId == null) { setDetail(null); return; }
-    let cancelled = false;
-    (async () => {
-      const d = await traceabilityApi.detail(pid, selectedId).catch(() => null);
-      if (!cancelled) setDetail(d);
-    })();
-    return () => { cancelled = true; };
-  }, [pid, selectedId]);
+    setSelectedId((cur) =>
+      cur != null && records.some((r) => r.sample_id === cur) ? cur : records[0]?.sample_id ?? null,
+    );
+  }, [records]);
 
   const selected = records.find((r) => r.sample_id === selectedId) ?? null;
-  const chain = detail ? buildChain(detail) : [];
+  const chain: ReturnType<typeof buildChain> = detail ? buildChain(detail as TraceDetail) : [];
 
   return (
     <div className="qms-trace-page">
@@ -147,8 +134,11 @@ export const Traceability: React.FC = () => {
             return (
               <div
                 key={r.sample_id}
+                role="button"
+                tabIndex={0}
                 className={`qms-trace-item ${selectedId === r.sample_id ? 'qms-trace-item--active' : ''}`}
                 onClick={() => setSelectedId(r.sample_id)}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedId(r.sample_id); } }}
               >
                 <div className="qms-trace-item-top">
                   <span className="font-medium">{recordLabel(r)}</span>

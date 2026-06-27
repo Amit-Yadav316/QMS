@@ -91,6 +91,9 @@ h1, h2, h3, h4, h5, h6 {
   flex-wrap: wrap;
 }
 
+.qms-empty-state { text-align: center; padding: 32px 16px; }
+.qms-empty-icon { margin-bottom: 12px; }
+
 .qms-chip-row {
   display: flex;
   flex-wrap: wrap;

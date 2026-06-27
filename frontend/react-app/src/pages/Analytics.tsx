@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Bar, BarChart, CartesianGrid, Legend, Line, LineChart,
   ResponsiveContainer, Tooltip, XAxis, YAxis,
@@ -7,13 +7,10 @@ import { Card } from '../components/ui/Card';
 import { Select } from '../components/ui/Select';
 import { Input } from '../components/ui/Input';
 import { useProject } from '../components/layout/ProjectLayout';
-import { analyticsApi } from '../api/analytics';
-import { catalogApi } from '../api/catalog';
-import { projectsApi } from '../api/projects';
-import type {
-  GradeResponse, GradeTrendPoint, OverviewKpis,
-  QualityAnalytics, QualityFilters, SupplierScore, TowerResponse,
-} from '../types/master';
+import { useAnalyticsOverview, useAnalyticsQuality, useSupplierScores } from '../queries/analytics';
+import { useProjectTowers } from '../queries/floors';
+import { useGrades } from '../queries/catalog';
+import type { GradeTrendPoint, QualityFilters } from '../types/master';
 import './Analytics.css';
 
 const LINE_COLORS = ['var(--blue)', 'var(--green)', 'var(--amber)', 'var(--red)', '#8b5cf6', '#06b6d4'];
@@ -47,48 +44,28 @@ export const Analytics: React.FC = () => {
   const { project } = useProject();
   const pid = project.project_id;
 
-  const [kpis, setKpis] = useState<OverviewKpis | null>(null);
-  const [suppliers, setSuppliers] = useState<SupplierScore[]>([]);
-  const [quality, setQuality] = useState<QualityAnalytics | null>(null);
-  const [towers, setTowers] = useState<TowerResponse[]>([]);
-  const [grades, setGrades] = useState<GradeResponse[]>([]);
-
   // Dimension filters (apply to the quality charts only).
   const [towerId, setTowerId] = useState('ALL');
   const [gradeId, setGradeId] = useState('ALL');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
 
-  // Whole-project context: KPIs, supplier scorecard, filter option lists.
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const [o, s, t, g] = await Promise.all([
-        analyticsApi.overview(pid).catch(() => null),
-        analyticsApi.suppliers(pid).catch(() => []),
-        projectsApi.towers(pid).catch(() => []),
-        catalogApi.grades().catch(() => []),
-      ]);
-      if (cancelled) return;
-      setKpis(o); setSuppliers(s); setTowers(t); setGrades(g);
-    })();
-    return () => { cancelled = true; };
-  }, [pid]);
+  const filters = useMemo<QualityFilters>(() => {
+    const f: QualityFilters = {};
+    if (towerId !== 'ALL') f.tower_id = Number(towerId);
+    if (gradeId !== 'ALL') f.grade_id = Number(gradeId);
+    if (dateFrom) f.date_from = dateFrom;
+    if (dateTo) f.date_to = dateTo;
+    return f;
+  }, [towerId, gradeId, dateFrom, dateTo]);
 
-  // Quality charts re-fetch whenever a filter changes.
-  useEffect(() => {
-    let cancelled = false;
-    const filters: QualityFilters = {};
-    if (towerId !== 'ALL') filters.tower_id = Number(towerId);
-    if (gradeId !== 'ALL') filters.grade_id = Number(gradeId);
-    if (dateFrom) filters.date_from = dateFrom;
-    if (dateTo) filters.date_to = dateTo;
-    (async () => {
-      const q = await analyticsApi.quality(pid, filters).catch(() => null);
-      if (!cancelled) setQuality(q);
-    })();
-    return () => { cancelled = true; };
-  }, [pid, towerId, gradeId, dateFrom, dateTo]);
+  // Whole-project context + the filter-driven quality charts (react-query
+  // refetches the quality query whenever the filters in its key change).
+  const { data: kpis = null } = useAnalyticsOverview(pid);
+  const { data: suppliers = [] } = useSupplierScores(pid);
+  const { data: towers = [] } = useProjectTowers(pid);
+  const { data: grades = [] } = useGrades();
+  const { data: quality = null } = useAnalyticsQuality(pid, filters);
 
   const trend = useMemo(() => pivotTrend(quality?.grade_trend ?? []), [quality]);
   const failures = kpis ? kpis.fail_count + kpis.critical_count : null;
