@@ -76,6 +76,19 @@ h1, h2, h3, h4, h5, h6 {
 .text-success { color: var(--green); }
 .text-warning { color: var(--amber); }
 
+/* Screen-reader-only text (visually hidden, still announced) */
+.qms-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 /* Animation */
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(5px); }
