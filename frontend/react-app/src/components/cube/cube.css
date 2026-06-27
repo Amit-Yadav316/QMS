@@ -1,0 +1,62 @@
+/* ── Cube samples list: rows + expand control ─────────────────────────────── */
+.qms-cube-row {
+  cursor: pointer;
+}
+
+.qms-cube-expand-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  padding: 2px;
+  border-radius: var(--radius-sm);
+  color: var(--gray-500);
+  cursor: pointer;
+}
+
+.qms-cube-expand-btn:hover {
+  background: var(--gray-100);
+  color: var(--gray-900);
+}
+
+.qms-cube-expand-btn:focus-visible {
+  outline: 2px solid var(--blue-mid);
+  outline-offset: 1px;
+}
+
+.qms-cube-detail-cell {
+  background: var(--gray-50);
+}
+
+/* ── Sample detail (results table + record form) ──────────────────────────── */
+.qms-cube-detail {
+  padding: 12px 8px;
+}
+
+.qms-cube-detail-empty {
+  margin: 4px 0 12px;
+}
+
+.qms-cube-detail-table {
+  margin-bottom: 12px;
+}
+
+.qms-cube-ncr-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.qms-cube-record-grid {
+  align-items: end;
+}
+
+.qms-cube-actions {
+  margin-top: 12px;
+}
+
+.qms-cube-record-note {
+  margin-top: 8px;
+}
