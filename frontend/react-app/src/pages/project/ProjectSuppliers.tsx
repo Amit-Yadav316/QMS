@@ -1,17 +1,19 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
+import { Select } from '../../components/ui/Select';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
 import { ErrorBox } from '../../components/ui/ErrorBox';
-import { Plus, Mail } from 'lucide-react';
+import { Plus, Mail, FileDown } from 'lucide-react';
 import { useProject } from '../../components/layout/ProjectLayout';
 import { getApiErrorMessage } from '../../api/client';
 import { toast } from '../../lib/toast';
 import { useCreateSupplier, useResendSupplierConfirmation, useSuppliers } from '../../queries/suppliers';
+import { useDocuments, useDownloadDocument } from '../../queries/documents';
 import { num, str } from '../../lib/coerce';
-import type { ConfirmationStatus, SupplierCreate, SupplierResponse } from '../../types/master';
+import type { ConfirmationStatus, DocumentResponse, SupplierCreate, SupplierResponse } from '../../types/master';
 
 const CONF_VARIANT: Record<ConfirmationStatus, 'pass' | 'warn' | 'fail'> = {
   CONFIRMED: 'pass', PENDING: 'warn', DECLINED: 'fail',
@@ -20,7 +22,7 @@ const CONF_LABEL: Record<ConfirmationStatus, string> = {
   CONFIRMED: 'Confirmed', PENDING: 'Pending', DECLINED: 'Declined',
 };
 
-const EMPTY = { supplier_name: '', plant_name: '', gst_number: '', plant_location: '', plant_distance_km: '', contact_email: '', contact_phone: '' };
+const EMPTY = { supplier_name: '', plant_name: '', gst_number: '', plant_location: '', plant_distance_km: '', contact_email: '', contact_phone: '', mix_design_document_id: '' };
 
 export const ProjectSuppliers: React.FC = () => {
   const { project } = useProject();
@@ -29,8 +31,15 @@ export const ProjectSuppliers: React.FC = () => {
   const canManage = project.access.can_manage_contractor_side;
 
   const { data: rows = [], isPending, error: loadError } = useSuppliers(pid);
+  const { data: documents = [] } = useDocuments(pid);
   const createSupplier = useCreateSupplier(pid);
   const resend = useResendSupplierConfirmation(pid);
+  const download = useDownloadDocument(pid);
+
+  const docById = useMemo(
+    () => new Map<number, DocumentResponse>(documents.map((d) => [d.document_id, d])),
+    [documents],
+  );
 
   const [form, setForm] = useState({ ...EMPTY });
   const [showForm, setShowForm] = useState(false);
@@ -48,6 +57,7 @@ export const ProjectSuppliers: React.FC = () => {
       plant_distance_km: num(form.plant_distance_km),
       contact_email: str(form.contact_email),
       contact_phone: str(form.contact_phone),
+      mix_design_document_id: form.mix_design_document_id ? Number(form.mix_design_document_id) : null,
     };
     try {
       const s = await createSupplier.mutateAsync(payload);
@@ -87,6 +97,15 @@ export const ProjectSuppliers: React.FC = () => {
             <Input label="Distance from site (km)" type="number" value={form.plant_distance_km} onChange={set('plant_distance_km')} />
             <Input label="Contact email" type="email" value={form.contact_email} onChange={set('contact_email')} />
             <Input label="Contact phone" type="tel" value={form.contact_phone} onChange={set('contact_phone')} />
+            <Select
+              label="Mix design document"
+              value={form.mix_design_document_id}
+              onChange={(e) => setForm((p) => ({ ...p, mix_design_document_id: e.target.value }))}
+              options={[
+                { label: documents.length ? 'None — attach later' : 'No documents — upload one in Documents', value: '' },
+                ...documents.map((d) => ({ label: d.title ?? d.original_filename, value: d.document_id })),
+              ]}
+            />
             <div className="qms-form-actions qms-grid-span-2">
               <Button type="submit" variant="primary" disabled={createSupplier.isPending} icon={<Plus size={16} />}>
                 {createSupplier.isPending ? 'Registering…' : 'Register supplier'}
@@ -110,12 +129,12 @@ export const ProjectSuppliers: React.FC = () => {
         </div>
         <div className="qms-table-container">
           <table className="qms-table">
-            <thead><tr><th>Supplier</th><th>Hired by</th><th>Plant</th><th>Distance</th><th>Contact</th><th>Confirmation</th></tr></thead>
+            <thead><tr><th>Supplier</th><th>Hired by</th><th>Plant</th><th>Distance</th><th>Mix design</th><th>Contact</th><th>Confirmation</th></tr></thead>
             <tbody>
               {isPending ? (
-                <tr><td colSpan={6} className="text-muted">Loading…</td></tr>
+                <tr><td colSpan={7} className="text-muted">Loading…</td></tr>
               ) : rows.length === 0 ? (
-                <tr><td colSpan={6} className="text-muted">No suppliers yet.</td></tr>
+                <tr><td colSpan={7} className="text-muted">No suppliers yet.</td></tr>
               ) : (
                 rows.map((s) => (
                   <tr key={s.supplier_id}>
@@ -131,6 +150,19 @@ export const ProjectSuppliers: React.FC = () => {
                     <td>{s.contractor_org_name ?? '—'}</td>
                     <td>{s.plant_name ?? s.plant_location ?? '—'}</td>
                     <td>{s.plant_distance_km != null ? `${s.plant_distance_km} km` : '—'}</td>
+                    <td>
+                      {s.mix_design_document_id && docById.has(s.mix_design_document_id) ? (
+                        <button
+                          type="button"
+                          className="qms-linklike"
+                          onClick={() => download.mutate(docById.get(s.mix_design_document_id as number) as DocumentResponse)}
+                        >
+                          <FileDown size={13} /> {s.mix_design_document_name ?? 'PDF'}
+                        </button>
+                      ) : s.mix_design_document_name ? (
+                        <span className="qms-text-sm">{s.mix_design_document_name}</span>
+                      ) : '—'}
+                    </td>
                     <td>{s.contact_email ?? s.contact_phone ?? '—'}</td>
                     <td>
                       <div className="qms-cell-actions">

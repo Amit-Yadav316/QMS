@@ -16,7 +16,8 @@ import { useProject } from '../../components/layout/ProjectLayout';
 import { getApiErrorMessage } from '../../api/client';
 import { toast } from '../../lib/toast';
 import { useProjectTowers, useFloors } from '../../queries/floors';
-import { useGrades, useComponents } from '../../queries/catalog';
+import { useComponents } from '../../queries/catalog';
+import { useApprovedGrades } from '../../queries/mixDesigns';
 import { useSuppliers } from '../../queries/suppliers';
 import { useCreatePour } from '../../queries/pours';
 
@@ -46,7 +47,8 @@ export const PourCardForm: React.FC = () => {
 
   const { data: towers = [], error: towersError } = useProjectTowers(pid);
   const { data: components = [] } = useComponents();
-  const { data: grades = [] } = useGrades();
+  // Only grades with an APPROVED mix design may be poured (backend enforces this too).
+  const { data: grades = [] } = useApprovedGrades(pid);
   const { data: suppliers = [] } = useSuppliers(pid);
   const createPour = useCreatePour(pid);
 
@@ -142,7 +144,7 @@ export const PourCardForm: React.FC = () => {
         <h3 className="qms-section-heading">B · Concrete & supply</h3>
         <div className="qms-grid-3">
           <Select label="Grade" required error={errors.grade_id?.message} {...register('grade_id')} options={[
-            { label: 'Select grade…', value: '' },
+            { label: grades.length ? 'Select grade…' : 'No approved mix designs — approve one in Mix designs', value: '' },
             ...grades.map((g) => ({ label: g.grade_name, value: g.grade_id })),
           ]} />
           <Select label="RMC supplier" required error={errors.supplier_horizontal_id?.message} {...register('supplier_horizontal_id')} options={[
