@@ -136,6 +136,7 @@ class SupplierCreate(BaseModel):
     no_transit_mixers: int | None = None
     no_concrete_pumps: int | None = None
     qms_certification: str | None = None
+    mix_design_document_id: int | None = None
 
 
 class SupplierResponse(BaseModel):
@@ -153,6 +154,8 @@ class SupplierResponse(BaseModel):
     is_active: bool
     status: str
     confirmed_at: datetime | None
+    mix_design_document_id: int | None = None
+    mix_design_document_name: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

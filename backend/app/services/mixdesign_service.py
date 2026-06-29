@@ -5,12 +5,13 @@ proportions and approval status. File upload of the approved PDF is deferred to
 the documents phase; this stores the structured metadata only.
 """
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundError
-from app.models.master import Grade, MixDesign, Project, Supplier
+from app.models.master import Grade, MixApprovalStatus, MixDesign, Project, Supplier
 from app.repositories.mixdesign_repo import MixDesignRepository
-from app.schemas.master import MixDesignCreate, MixDesignResponse
+from app.schemas.master import GradeResponse, MixDesignCreate, MixDesignResponse
 
 
 class MixDesignService:
@@ -24,6 +25,21 @@ class MixDesignService:
             order_by=MixDesign.created_at.desc(),
         )
         return [await self._to_response(md) for md in rows]
+
+    async def approved_grades(self, project: Project) -> list[GradeResponse]:
+        """Grades that have at least one APPROVED mix design on the project —
+        the only grades a pour may be raised for (see PourService)."""
+        rows = await self.session.execute(
+            select(Grade)
+            .join(MixDesign, MixDesign.grade_id == Grade.grade_id)
+            .where(
+                MixDesign.project_id == project.project_id,
+                MixDesign.approval_status == MixApprovalStatus.APPROVED,
+            )
+            .distinct()
+            .order_by(Grade.min_strength_mpa)
+        )
+        return [GradeResponse.model_validate(g) for g in rows.scalars().all()]
 
     async def create(
         self, project: Project, data: MixDesignCreate

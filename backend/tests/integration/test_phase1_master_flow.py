@@ -290,3 +290,39 @@ class TestMixDesigns:
             headers=bearer(contractor_token),
         )
         assert md.status_code == 404
+
+
+class TestSupplierMixDesignDocument:
+    """A supplier can link a mix-design PDF from the project document store."""
+
+    async def test_supplier_links_project_document(self, client, db_session):
+        _, contractor_token, project_id = await _contractor_on_project(client, db_session)
+        doc = (
+            await client.post(
+                f"{API}/projects/{project_id}/documents",
+                files={"file": ("mix.pdf", b"%PDF-1.4 mix", "application/pdf")},
+                data={"title": "M30 Mix Design"},
+                headers=bearer(contractor_token),
+            )
+        ).json()
+        resp = await client.post(
+            f"{API}/projects/{project_id}/suppliers",
+            json={
+                "supplier_name": "UltraTech RMC",
+                "mix_design_document_id": doc["document_id"],
+            },
+            headers=bearer(contractor_token),
+        )
+        assert resp.status_code == 201, resp.text
+        body = resp.json()
+        assert body["mix_design_document_id"] == doc["document_id"]
+        assert body["mix_design_document_name"] == "M30 Mix Design"
+
+    async def test_unknown_document_is_rejected(self, client, db_session):
+        _, contractor_token, project_id = await _contractor_on_project(client, db_session)
+        resp = await client.post(
+            f"{API}/projects/{project_id}/suppliers",
+            json={"supplier_name": "X RMC", "mix_design_document_id": 999999},
+            headers=bearer(contractor_token),
+        )
+        assert resp.status_code == 404

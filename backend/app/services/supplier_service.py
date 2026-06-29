@@ -17,7 +17,7 @@ from app.core.email import send_supplier_confirmation_email
 from app.core.exceptions import NotFoundError, PermissionDeniedError
 from app.core.security import create_invitation_token
 from app.models.auth import User
-from app.models.master import Project, Supplier
+from app.models.master import Document, Project, Supplier
 from app.repositories.auth_repo import AuthRepository
 from app.repositories.supplier_repo import SupplierRepository
 from app.schemas.master import (
@@ -63,11 +63,28 @@ class SupplierService:
     async def _to_response(self, supplier: Supplier) -> SupplierResponse:
         resp = SupplierResponse.model_validate(supplier)
         resp.contractor_org_name = await self._org_name(supplier.contractor_org_id)
+        if supplier.mix_design_document_id:
+            doc = await self.session.get(Document, supplier.mix_design_document_id)
+            if doc:
+                resp.mix_design_document_name = doc.title or doc.original_filename
         return resp
+
+    async def _validate_mix_design_document(
+        self, document_id: int | None, project_id: int
+    ) -> None:
+        """A linked mix-design PDF must be a document of this project."""
+        if document_id is None:
+            return
+        doc = await self.session.get(Document, document_id)
+        if not doc or doc.project_id != project_id:
+            raise NotFoundError("Document")
 
     async def create(
         self, data: SupplierCreate, project: Project, user: User
     ) -> SupplierResponse:
+        await self._validate_mix_design_document(
+            data.mix_design_document_id, project.project_id
+        )
         token = create_invitation_token()
         sent_at = datetime.now(UTC) if data.contact_email else None
         supplier = Supplier(

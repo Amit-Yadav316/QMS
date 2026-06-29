@@ -361,6 +361,10 @@ class Supplier(Base):
     no_transit_mixers: Mapped[int | None] = mapped_column(Integer, nullable=True)
     no_concrete_pumps: Mapped[int | None] = mapped_column(Integer, nullable=True)
     qms_certification: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    # Mix-design PDF attached from the project document store at registration.
+    mix_design_document_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("master.documents.document_id"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

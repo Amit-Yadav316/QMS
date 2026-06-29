@@ -12,7 +12,7 @@ from app.core.project_access import ensure_can_manage_contractor_side, require_p
 from app.database.session import get_db
 from app.models.auth import User
 from app.models.master import Project
-from app.schemas.master import MixDesignCreate, MixDesignResponse
+from app.schemas.master import GradeResponse, MixDesignCreate, MixDesignResponse
 from app.services.mixdesign_service import MixDesignService
 
 router = APIRouter(prefix="/projects", tags=["mix-designs"])
@@ -24,6 +24,18 @@ async def list_mix_designs(
     db: AsyncSession = Depends(get_db),
 ):
     return await MixDesignService(db).list_for_project(project)
+
+
+@router.get(
+    "/{project_id}/mix-designs/approved-grades",
+    response_model=list[GradeResponse],
+)
+async def list_approved_grades(
+    project: Project = Depends(require_project),
+    db: AsyncSession = Depends(get_db),
+):
+    """Grades with an APPROVED mix design — the grades a pour may use."""
+    return await MixDesignService(db).approved_grades(project)
 
 
 @router.post(

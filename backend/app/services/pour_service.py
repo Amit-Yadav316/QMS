@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import (
+    GradeNotApprovedError,
     NotFoundError,
     PermissionDeniedError,
     PourAlreadyCompletedError,
@@ -20,6 +21,7 @@ from app.models.master import (
     Component,
     Floor,
     Grade,
+    MixApprovalStatus,
     MixDesign,
     Project,
     ProjectContractor,
@@ -54,6 +56,7 @@ class PourService:
             raise NotFoundError("Component")
         if not await self.session.get(Grade, data.grade_id):
             raise NotFoundError("Grade")
+        await self._ensure_grade_has_approved_mix(data.grade_id, pid)
 
         supplier = await self.session.get(Supplier, data.supplier_horizontal_id)
         if not supplier or supplier.project_id != pid:
@@ -78,6 +81,23 @@ class PourService:
             )
         )
         return await self._to_response(pour)
+
+    async def _ensure_grade_has_approved_mix(
+        self, grade_id: int, project_id: int
+    ) -> None:
+        """A pour may only use a grade that has an APPROVED mix design on the
+        project — the mix is the contract for what gets batched."""
+        res = await self.session.execute(
+            select(MixDesign.mix_design_id)
+            .where(
+                MixDesign.project_id == project_id,
+                MixDesign.grade_id == grade_id,
+                MixDesign.approval_status == MixApprovalStatus.APPROVED,
+            )
+            .limit(1)
+        )
+        if res.scalar_one_or_none() is None:
+            raise GradeNotApprovedError()
 
     async def _ensure_tower_in_scope(
         self, tower: Tower, project: Project, user: User

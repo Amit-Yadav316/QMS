@@ -57,6 +57,17 @@ async def _pour_refs(client, db_session, contractor_token, qe_token, project_id)
             headers=bearer(contractor_token),
         )
     ).json()
+    # A pour may only use a grade with an APPROVED mix design — set one up so the
+    # downstream pour flows (phases 2/4/5/6/9) can raise M30 pours.
+    await client.post(
+        f"{API}/projects/{project_id}/mix-designs",
+        json={
+            "supplier_id": supplier["supplier_id"],
+            "grade_id": m30["grade_id"],
+            "approval_status": "APPROVED",
+        },
+        headers=bearer(contractor_token),
+    )
     return {
         "tower_id": tower_id,
         "floor_id": floors[0]["floor_id"],
@@ -147,6 +158,29 @@ class TestPourLifecycle:
         )
         assert resp.status_code == 404
 
+    async def test_grade_without_approved_mix_is_rejected(self, client, db_session):
+        contractor_token, qe_token, project_id = await _project_with_qe(client, db_session)
+        refs = await _pour_refs(client, db_session, contractor_token, qe_token, project_id)
+        grades = (await client.get(f"{API}/grades", headers=bearer(qe_token))).json()
+        other = next(g for g in grades if g["grade_name"] != "M30")
+        resp = await client.post(
+            f"{API}/projects/{project_id}/pours",
+            json={**refs, "grade_id": other["grade_id"], "pour_date": "2026-07-15"},
+            headers=bearer(qe_token),
+        )
+        assert resp.status_code == 400
+
+    async def test_approved_grades_endpoint_lists_only_approved(self, client, db_session):
+        contractor_token, qe_token, project_id = await _project_with_qe(client, db_session)
+        await _pour_refs(client, db_session, contractor_token, qe_token, project_id)
+        rows = (
+            await client.get(
+                f"{API}/projects/{project_id}/mix-designs/approved-grades",
+                headers=bearer(qe_token),
+            )
+        ).json()
+        assert [g["grade_name"] for g in rows] == ["M30"]
+
 
 class TestPourTowerScope:
     """A contractor scoped to specific towers can only pour on those towers."""
@@ -217,6 +251,15 @@ class TestPourTowerScope:
                 headers=bearer(contractor_token),
             )
         ).json()
+        await client.post(
+            f"{API}/projects/{project_id}/mix-designs",
+            json={
+                "supplier_id": supplier["supplier_id"],
+                "grade_id": m30["grade_id"],
+                "approval_status": "APPROVED",
+            },
+            headers=bearer(contractor_token),
+        )
         return {
             "tower_id": tower_id,
             "floor_id": floors[0]["floor_id"],

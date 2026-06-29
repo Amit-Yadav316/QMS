@@ -60,6 +60,16 @@ async def _dispatch_refs(client, contractor_token, qe_token, project_id) -> dict
             headers=bearer(contractor_token),
         )
     ).json()
+    # A pour needs an APPROVED mix design for its grade (see PourService).
+    await client.post(
+        f"{API}/projects/{project_id}/mix-designs",
+        json={
+            "supplier_id": supplier["supplier_id"],
+            "grade_id": m30["grade_id"],
+            "approval_status": "APPROVED",
+        },
+        headers=bearer(contractor_token),
+    )
     pour = (
         await client.post(
             f"{API}/projects/{project_id}/pours",
