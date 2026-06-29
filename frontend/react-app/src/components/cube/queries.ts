@@ -1,12 +1,11 @@
 // React Query hooks for the cube-tests feature. Reads: the project's cube samples
-// plus the pours + labs the cast form needs. Mutations invalidate the affected
-// keys — recording a test also invalidates the NCR list, because a failing result
-// auto-raises an NCR server-side.
+// plus the pours + labs the cast form needs. Strength results now arrive from the
+// lab via its tokenised link, so there is no record-test mutation here — the QE
+// casts samples and can copy/resend the lab's report link.
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { cubeTestsApi } from '../../api/cubeTests';
-import { ncrKeys } from '../ncr/queries';
-import type { CubeSampleCreate, CubeTestCreate } from '../../types/master';
+import type { CubeSampleCreate } from '../../types/master';
 
 // Shared resource hooks (pours/labs) live in src/queries and are re-exported here
 // for the cast form's dropdowns.
@@ -29,14 +28,17 @@ export const useCastSample = (pid: number) => {
   });
 };
 
-export const useRecordTest = (pid: number) => {
+// Fetch the lab's report link to copy/share (mints a token if needed; no email).
+export const useReportLink = (pid: number) =>
+  useMutation({
+    mutationFn: (sampleId: number) => cubeTestsApi.getReportLink(pid, sampleId),
+  });
+
+// Re-email the lab its report link; flips report_link_sent, so refresh samples.
+export const useResendReportLink = (pid: number) => {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (vars: { sampleId: number; data: CubeTestCreate }) =>
-      cubeTestsApi.recordTest(pid, vars.sampleId, vars.data),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: cubeKeys.samples(pid) });
-      void qc.invalidateQueries({ queryKey: ncrKeys.list(pid) });
-    },
+    mutationFn: (sampleId: number) => cubeTestsApi.resendReportLink(pid, sampleId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: cubeKeys.samples(pid) }),
   });
 };

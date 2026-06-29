@@ -60,3 +60,42 @@
 .qms-cube-record-note {
   margin-top: 8px;
 }
+
+/* ── Lab-submitted report PDF link ────────────────────────────────────────── */
+.qms-cube-report-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--blue-mid);
+  cursor: pointer;
+}
+
+.qms-cube-report-link:hover {
+  text-decoration: underline;
+}
+
+/* ── QE lab-dispatch panel inside the sample detail ───────────────────────── */
+.qms-cube-lab-panel {
+  margin-top: 8px;
+  padding: 12px;
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-md);
+  background: var(--gray-50);
+}
+
+.qms-cube-lab-status {
+  font-size: 13px;
+  color: var(--gray-700);
+  margin-bottom: 8px;
+}
+
+.qms-cube-milestones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 4px;
+}

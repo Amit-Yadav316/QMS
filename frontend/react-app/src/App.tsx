@@ -7,6 +7,7 @@ import { AcceptInvitationPage } from './pages/AcceptInvitationPage';
 import { VerifyOtpPage } from './pages/VerifyOtpPage';
 import { ConfirmRegistration } from './pages/ConfirmRegistration';
 import { DispatchFill } from './pages/DispatchFill';
+import { LabReport } from './pages/LabReport';
 
 // Workspace entry + project listing
 import { AppHome } from './pages/AppHome';
@@ -45,6 +46,7 @@ function App() {
         {/* External / public routes */}
         <Route path="/external/confirm/:kind" element={<ConfirmRegistration />} />
         <Route path="/dispatch/fill" element={<DispatchFill />} />
+        <Route path="/external/lab-report" element={<LabReport />} />
         <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/auth/accept-invitation" element={<AcceptInvitationPage />} />

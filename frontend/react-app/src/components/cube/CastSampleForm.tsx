@@ -105,6 +105,10 @@ export const CastSampleForm: React.FC<CastSampleFormProps> = ({ pid, pours, labs
             ]}
           />
         </div>
+        <p className="qms-text-sm text-muted qms-cube-record-note">
+          Choosing a lab with a contact email emails it the report link, so it can
+          submit the 7/14/28-day strength reports directly.
+        </p>
         <div className="qms-form-actions qms-cube-actions">
           <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
           <Button type="submit" variant="primary" disabled={cast.isPending}>
