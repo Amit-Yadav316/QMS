@@ -25,5 +25,5 @@ async def chat(
     db: AsyncSession = Depends(get_db),
     llm: LLMClient = Depends(get_llm),
 ):
-    result = await run_agent(db, project, data.question, llm)
-    return ChatResponse(answer=result.answer, tools_used=result.tools_used)
+    result = await run_agent(db, project, data.question, llm, history=data.history)
+    return ChatResponse(answer=result.answer, tools_used=result.tools_used, chart=result.chart)
