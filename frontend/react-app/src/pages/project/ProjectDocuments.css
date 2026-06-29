@@ -1,0 +1,20 @@
+.qms-doc-hint {
+  font-size: 12px;
+  margin: 8px 0 0;
+}
+
+.qms-doc-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.qms-doc-id {
+  font-size: 12px;
+}
+
+.qms-search-box {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}

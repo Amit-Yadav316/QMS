@@ -3,12 +3,14 @@
 // via the router Outlet context. The nav itself lives in the (project-aware)
 // Sidebar.
 
-import React, { useCallback, useEffect, useState } from 'react';
-import { Outlet, useNavigate, useOutletContext, useParams } from 'react-router-dom';
+import React from 'react';
+import { Link, Outlet, useMatch, useNavigate, useOutletContext, useParams } from 'react-router-dom';
 import { ChevronLeft } from 'lucide-react';
 import { Badge } from '../ui/Badge';
-import { projectsApi } from '../../api/projects';
+import { ErrorBox } from '../ui/ErrorBox';
+import { ChatWidget } from '../chat/ChatWidget';
 import { getApiErrorMessage } from '../../api/client';
+import { useProjectDetail } from '../../queries/projects';
 import type { ProjectDetail } from '../../types/master';
 import './ProjectLayout.css';
 
@@ -38,39 +40,22 @@ export const ProjectLayout: React.FC = () => {
   const { projectId } = useParams();
   const navigate = useNavigate();
   const id = Number(projectId);
+  // The full Chatbot page already hosts the analyst — don't also float the widget
+  // there (it would be a second conversation on the same project).
+  const onChatbotPage = useMatch('/app/projects/:projectId/chatbot') != null;
 
-  const [project, setProject] = useState<ProjectDetail | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data: project, isPending, error, refetch } = useProjectDetail(id);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      setProject(await projectsApi.detail(id));
-    } catch (err) {
-      setError(getApiErrorMessage(err, 'Unable to load this project.'));
-    } finally {
-      setLoading(false);
-    }
-  }, [id]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  if (loading) {
+  if (isPending) {
     return <div className="qms-form-page"><p className="text-muted">Loading project…</p></div>;
   }
   if (error || !project) {
     return (
       <div className="qms-form-page">
-        <button className="qms-pw-back" onClick={() => navigate('/app/projects')}>
+        <button type="button" className="qms-pw-back" onClick={() => navigate('/app/projects')}>
           <ChevronLeft size={16} /> Back to projects
         </button>
-        <div style={{ padding: '12px 16px', borderRadius: 8, background: '#FEE2E2', color: '#991B1B', border: '1px solid #FCA5A5', fontSize: 14 }}>
-          {error ?? 'Project not found.'}
-        </div>
+        <ErrorBox>{error ? getApiErrorMessage(error, 'Unable to load this project.') : 'Project not found.'}</ErrorBox>
       </div>
     );
   }
@@ -80,7 +65,9 @@ export const ProjectLayout: React.FC = () => {
       <div className="qms-pw">
         <div className="qms-pw-header">
           <div>
-            <h1 className="qms-pw-title">{project.project_name}</h1>
+            <Link to={`/app/projects/${id}`} className="qms-pw-title-link" title="Go to project dashboard">
+              <h1 className="qms-pw-title">{project.project_name}</h1>
+            </Link>
             <div className="qms-pw-sub">
               {project.project_code ? `${project.project_code} · ` : ''}
               {[project.city, project.state].filter(Boolean).join(', ') || 'No location set'}
@@ -91,8 +78,9 @@ export const ProjectLayout: React.FC = () => {
           </Badge>
         </div>
 
-        <Outlet context={{ project, reload: load } satisfies ProjectCtx} />
+        <Outlet context={{ project, reload: () => { void refetch(); } } satisfies ProjectCtx} />
       </div>
+      {!onChatbotPage && <ChatWidget project={project} />}
     </div>
   );
 };

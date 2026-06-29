@@ -5,9 +5,9 @@ its pour (CubeSample → Pour → project_id); cube tests and NCRs hang off the
 sample/pour, so the project-scoped queries here join through that chain.
 """
 
-from sqlalchemy import select
+from sqlalchemy import and_, select
 
-from app.models.quality import NCR, CorrectiveAction, CubeTest, Penalty
+from app.models.quality import NCR, CorrectiveAction, CubeTest, NCRStatus, Penalty
 from app.models.transaction import CubeSample, Pour
 from app.repositories.base_repo import BaseRepository
 
@@ -79,6 +79,27 @@ class NCRRepository(BaseRepository[NCR]):
             .join(Pour, Pour.pour_id == NCR.pour_id)
             .where(Pour.project_id == project_id)
             .order_by(NCR.raised_at.desc())
+        )
+        res = await self.session.execute(q)
+        return list(res.scalars().all())
+
+    async def list_resolved_for_project(
+        self, project_id: int, *, exclude_ncr_id: int | None = None
+    ) -> list[NCR]:
+        """CLOSED NCRs in the project that carry a root cause — the Phase-9 RAG
+        corpus of past resolved cases (optionally excluding one NCR)."""
+        conds = [
+            Pour.project_id == project_id,
+            NCR.status == NCRStatus.CLOSED,
+            NCR.root_cause.isnot(None),
+        ]
+        if exclude_ncr_id is not None:
+            conds.append(NCR.ncr_id != exclude_ncr_id)
+        q = (
+            select(NCR)
+            .join(Pour, Pour.pour_id == NCR.pour_id)
+            .where(and_(*conds))
+            .order_by(NCR.closed_at.desc())
         )
         res = await self.session.execute(q)
         return list(res.scalars().all())

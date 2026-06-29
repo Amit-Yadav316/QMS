@@ -1,0 +1,6 @@
+.qms-structure-gen {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  margin-top: 12px;
+}

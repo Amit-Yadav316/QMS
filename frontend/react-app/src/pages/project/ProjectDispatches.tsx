@@ -1,16 +1,18 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Plus, Send, Copy, Check } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
 import { Select } from '../../components/ui/Select';
 import { Input } from '../../components/ui/Input';
+import { ErrorBox } from '../../components/ui/ErrorBox';
 import { useProject } from '../../components/layout/ProjectLayout';
 import { useAuth } from '../../hooks/useAuth';
-import { dispatchesApi } from '../../api/dispatches';
-import { poursApi } from '../../api/pours';
 import { getApiErrorMessage } from '../../api/client';
-import type { DispatchResponse, PourResponse, TruckStatus } from '../../types/master';
+import { toast } from '../../lib/toast';
+import { useCreateDispatch, useDispatches, useResendDispatch } from '../../queries/dispatches';
+import { usePours } from '../../queries/pours';
+import type { DispatchResponse, TruckStatus } from '../../types/master';
 
 const TRUCK_VARIANT: Record<TruckStatus, 'pass' | 'fail' | 'warn' | 'info' | 'pending'> = {
   PENDING: 'pending', FILLED: 'info', ARRIVED: 'warn', ACCEPTED: 'pass', REJECTED: 'fail',
@@ -22,44 +24,22 @@ const TRUCK_LABEL: Record<TruckStatus, string> = {
 const fillLink = (token: string) => `${window.location.origin}/dispatch/fill?token=${token}`;
 const vol = (v: number | null) => (v != null ? `${v} m³` : '—');
 
-const errorBox = (msg: string) => (
-  <div style={{ padding: '12px 16px', borderRadius: 8, marginBottom: 16, fontSize: 14, background: '#FEE2E2', color: '#991B1B', border: '1px solid #FCA5A5' }}>
-    {msg}
-  </div>
-);
-
 export const ProjectDispatches: React.FC = () => {
   const { project } = useProject();
   const { user } = useAuth();
   const pid = project.project_id;
   const isQE = user?.role === 'QUALITY_ENGINEER';
 
-  const [rows, setRows] = useState<DispatchResponse[]>([]);
-  const [pours, setPours] = useState<PourResponse[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const dispatchesQuery = useDispatches(pid);
+  const rows = dispatchesQuery.data ?? [];
+  const { data: pours = [] } = usePours(pid);
+  const createDispatch = useCreateDispatch(pid);
+  const resend = useResendDispatch(pid);
 
   const [showForm, setShowForm] = useState(false);
   const [pourId, setPourId] = useState('');
   const [volume, setVolume] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [resendingId, setResendingId] = useState<number | null>(null);
   const [copiedId, setCopiedId] = useState<number | null>(null);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [d, p] = await Promise.all([dispatchesApi.list(pid), poursApi.list(pid)]);
-      setRows(d);
-      setPours(p);
-    } catch (err) {
-      setError(getApiErrorMessage(err, 'Unable to load dispatches.'));
-    } finally {
-      setLoading(false);
-    }
-  }, [pid]);
-
-  useEffect(() => { void load(); }, [load]);
 
   // A dispatch carries the supplier + grade of its pour, so picking the pour is
   // all the QE needs — they just add the ordered volume.
@@ -73,36 +53,28 @@ export const ProjectDispatches: React.FC = () => {
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedPour) return;
-    setError(null);
-    setSubmitting(true);
     try {
-      await dispatchesApi.create(pid, {
+      await createDispatch.mutateAsync({
         pour_id: selectedPour.pour_id,
         supplier_id: selectedPour.supplier_horizontal_id,
         grade_id: selectedPour.grade_id,
         volume_ordered_cum: Number(volume),
       });
+      toast.success('Dispatch request sent to the supplier.');
       setShowForm(false);
       setPourId('');
       setVolume('');
-      void load();
     } catch (err) {
-      setError(getApiErrorMessage(err, 'Unable to raise dispatch.'));
-    } finally {
-      setSubmitting(false);
+      toast.error(getApiErrorMessage(err, 'Unable to raise dispatch.'));
     }
   };
 
   const handleResend = async (d: DispatchResponse) => {
-    setError(null);
-    setResendingId(d.dispatch_id);
     try {
-      await dispatchesApi.resend(pid, d.dispatch_id);
-      void load();
+      await resend.mutateAsync(d.dispatch_id);
+      toast.success('Dispatch link re-sent.');
     } catch (err) {
-      setError(getApiErrorMessage(err, 'Unable to resend the dispatch link.'));
-    } finally {
-      setResendingId(null);
+      toast.error(getApiErrorMessage(err, 'Unable to resend the dispatch link.'));
     }
   };
 
@@ -127,7 +99,7 @@ export const ProjectDispatches: React.FC = () => {
         )}
       </div>
 
-      {error && errorBox(error)}
+      {dispatchesQuery.error && <ErrorBox>{getApiErrorMessage(dispatchesQuery.error, 'Unable to load dispatches.')}</ErrorBox>}
 
       {isQE && showForm && (
         <Card className="qms-form-section">
@@ -163,13 +135,13 @@ export const ProjectDispatches: React.FC = () => {
                 onChange={(e) => setVolume(e.target.value)}
               />
             </div>
-            <p className="qms-text-sm text-muted" style={{ marginTop: 8 }}>
+            <p className="qms-text-sm text-muted qms-mt-8">
               The supplier is emailed a link to fill in the truck details — no login needed.
             </p>
-            <div className="qms-form-actions" style={{ marginTop: 12 }}>
+            <div className="qms-form-actions">
               <Button type="button" variant="outline" onClick={() => setShowForm(false)}>Cancel</Button>
-              <Button type="submit" variant="primary" disabled={submitting || !canSubmit}>
-                {submitting ? 'Sending…' : 'Send dispatch request'}
+              <Button type="submit" variant="primary" disabled={createDispatch.isPending || !canSubmit}>
+                {createDispatch.isPending ? 'Sending…' : 'Send dispatch request'}
               </Button>
             </div>
           </form>
@@ -186,7 +158,7 @@ export const ProjectDispatches: React.FC = () => {
               </tr>
             </thead>
             <tbody>
-              {loading ? (
+              {dispatchesQuery.isPending ? (
                 <tr><td colSpan={isQE ? 7 : 6} className="text-muted">Loading…</td></tr>
               ) : rows.length === 0 ? (
                 <tr><td colSpan={isQE ? 7 : 6} className="text-muted">No dispatches yet.</td></tr>
@@ -204,14 +176,16 @@ export const ProjectDispatches: React.FC = () => {
                         : '—'}
                     </td>
                     {isQE && (
-                      <td style={{ whiteSpace: 'nowrap' }}>
+                      <td className="qms-nowrap">
                         {d.truck?.status === 'PENDING' && (
                           <>
                             <Button variant="ghost" size="sm" icon={copiedId === d.dispatch_id ? <Check size={14} /> : <Copy size={14} />} onClick={() => handleCopy(d)}>
                               {copiedId === d.dispatch_id ? 'Copied' : 'Link'}
                             </Button>
-                            <Button variant="ghost" size="sm" icon={<Send size={14} />} disabled={resendingId === d.dispatch_id} onClick={() => handleResend(d)}>
-                              {resendingId === d.dispatch_id ? 'Sending…' : 'Resend'}
+                            <Button variant="ghost" size="sm" icon={<Send size={14} />}
+                              disabled={resend.isPending && resend.variables === d.dispatch_id}
+                              onClick={() => handleResend(d)}>
+                              {resend.isPending && resend.variables === d.dispatch_id ? 'Sending…' : 'Resend'}
                             </Button>
                           </>
                         )}

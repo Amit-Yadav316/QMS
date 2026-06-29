@@ -6,8 +6,11 @@ running Ollama model. The tools themselves run the real Phase-6 services against
 the project, so a tool result reflects real (here, empty) project data.
 """
 
+import json
+
 import pytest
 
+from app.ai.agent import _derive_chart
 from app.ai.llm import LLMReply, ToolCall, get_llm
 from app.main import app
 from tests.helpers import API, bearer
@@ -57,6 +60,48 @@ class TestAnalystAgent:
         # The real tool result was threaded back to the model on the 2nd call.
         tool_msgs = [m for m in fake.seen[1] if m["role"] == "tool"]
         assert tool_msgs and '"pour_count": 0' in tool_msgs[0]["content"]
+
+    async def test_history_threaded_into_prompt(self, client, db_session):
+        token, project_id = await _client_with_project(client)
+        fake = ScriptedLLM([LLMReply(content="You asked about pours.")])
+        _use_llm(fake)
+
+        resp = await client.post(
+            f"{API}/projects/{project_id}/chat",
+            json={
+                "question": "what did I just ask?",
+                "history": [
+                    {"role": "user", "content": "How many pours are there?"},
+                    {"role": "assistant", "content": "There are 0 pours."},
+                ],
+            },
+            headers=bearer(token),
+        )
+        assert resp.status_code == 200, resp.text
+        # The seeded history sits between the system prompt and the new question
+        # on the first (only) LLM call.
+        seeded = fake.seen[0]
+        assert [m["role"] for m in seeded] == ["system", "user", "assistant", "user"]
+        assert seeded[1]["content"] == "How many pours are there?"
+        assert seeded[2]["content"] == "There are 0 pours."
+        assert seeded[3]["content"] == "what did I just ask?"
+
+    async def test_chart_is_none_when_tool_data_empty(self, client, db_session):
+        token, project_id = await _client_with_project(client)
+        # Empty project → the supplier scorecard tool returns [], so no chart.
+        fake = ScriptedLLM([
+            LLMReply(tool_calls=[ToolCall(name="get_supplier_scorecard", arguments={})]),
+            LLMReply(content="No suppliers scored yet."),
+        ])
+        _use_llm(fake)
+
+        resp = await client.post(
+            f"{API}/projects/{project_id}/chat",
+            json={"question": "show the supplier scorecard"},
+            headers=bearer(token),
+        )
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["chart"] is None
 
     async def test_direct_answer_without_tools(self, client, db_session):
         token, project_id = await _client_with_project(client)
@@ -124,3 +169,47 @@ class TestAnalystAgent:
             headers=bearer(token),
         )
         assert resp.status_code == 404, resp.text
+
+
+class TestChartDerivation:
+    """``_derive_chart`` is pure — it builds one chart from tool-result JSON."""
+
+    @staticmethod
+    def _tool_msg(name: str, payload) -> dict:
+        return {"role": "tool", "tool_name": name, "content": json.dumps(payload)}
+
+    def test_supplier_scorecard_builds_bar_chart(self):
+        messages = [
+            {"role": "user", "content": "scorecard"},
+            self._tool_msg("get_supplier_scorecard", [
+                {"supplier_id": 1, "supplier_name": "ACME RMC", "pass_rate_pct": 92.5},
+                {"supplier_id": 2, "supplier_name": "BuildMix", "pass_rate_pct": 80.0},
+            ]),
+            {"role": "assistant", "content": "done"},
+        ]
+        chart = _derive_chart(messages)
+        assert chart is not None
+        assert chart.type == "bar"
+        assert chart.x_key == "supplier_name"
+        assert [s.key for s in chart.series] == ["pass_rate_pct"]
+        assert chart.data == [
+            {"supplier_name": "ACME RMC", "pass_rate_pct": 92.5},
+            {"supplier_name": "BuildMix", "pass_rate_pct": 80.0},
+        ]
+
+    def test_empty_supplier_scorecard_yields_no_chart(self):
+        assert _derive_chart([self._tool_msg("get_supplier_scorecard", [])]) is None
+
+    def test_overview_kpis_builds_results_bar(self):
+        chart = _derive_chart([
+            self._tool_msg("get_overview_kpis", {
+                "pass_count": 10, "fail_count": 2, "critical_count": 1,
+            }),
+        ])
+        assert chart is not None
+        assert chart.type == "bar"
+        assert [row["label"] for row in chart.data] == ["Pass", "Fail", "Critical"]
+        assert [row["count"] for row in chart.data] == [10, 2, 1]
+
+    def test_no_tool_messages_yields_no_chart(self):
+        assert _derive_chart([{"role": "assistant", "content": "hi"}]) is None

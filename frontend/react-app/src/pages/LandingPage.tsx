@@ -315,8 +315,8 @@ export const LandingPage: React.FC = () => {
 
       {/* MOBILE DRAWER */}
       {mobileMenuOpen && (
-        <div className="lp-drawer-overlay" onClick={() => setMobileMenuOpen(false)}>
-          <div className="lp-drawer" onClick={e => e.stopPropagation()}>
+        <div className="lp-drawer-overlay" role="presentation" onClick={(e) => { if (e.target === e.currentTarget) setMobileMenuOpen(false); }}>
+          <div className="lp-drawer">
             <button className="lp-drawer-close" onClick={() => setMobileMenuOpen(false)} aria-label="Close menu"><X size={24} /></button>
             <nav className="lp-drawer-links">
               <a href="#features" onClick={() => setMobileMenuOpen(false)}>Features</a>
@@ -627,16 +627,16 @@ export const LandingPage: React.FC = () => {
           </div>
           <div className="lp-footer-col">
             <div className="lp-footer-col-title">Platform</div>
-            <a href="#">Dashboard</a>
-            <a href="#">Pour Cards</a>
-            <a href="#">Lab Results</a>
-            <a href="#">NCR Tracking</a>
+            <button type="button" className="lp-footer-link">Dashboard</button>
+            <button type="button" className="lp-footer-link">Pour Cards</button>
+            <button type="button" className="lp-footer-link">Lab Results</button>
+            <button type="button" className="lp-footer-link">NCR Tracking</button>
           </div>
           <div className="lp-footer-col">
             <div className="lp-footer-col-title">Company</div>
-            <a href="#">Contact</a>
-            <a href="#">Privacy Policy</a>
-            <a href="#">Terms of Service</a>
+            <button type="button" className="lp-footer-link">Contact</button>
+            <button type="button" className="lp-footer-link">Privacy Policy</button>
+            <button type="button" className="lp-footer-link">Terms of Service</button>
           </div>
         </div>
         <div className="lp-footer-bottom">
@@ -647,9 +647,9 @@ export const LandingPage: React.FC = () => {
 
       {/* AUTH MODAL (login + signup) */}
       {showAuth && (
-        <div className="lp-modal-overlay" onClick={() => setShowAuth(false)}>
-          <div className="lp-modal" onClick={e => e.stopPropagation()}>
-            <div className="lp-modal-close" onClick={() => setShowAuth(false)} role="button" aria-label="Close">×</div>
+        <div className="lp-modal-overlay" role="presentation" onClick={(e) => { if (e.target === e.currentTarget) setShowAuth(false); }}>
+          <div className="lp-modal">
+            <button type="button" className="lp-modal-close" onClick={() => setShowAuth(false)} aria-label="Close">×</button>
 
             <div className="lp-modal-header">
               <div className="lp-logo-mark" style={{ margin: '0 auto 16px' }}><Layers size={20} /></div>
@@ -668,18 +668,20 @@ export const LandingPage: React.FC = () => {
             {authMode === 'login' ? (
               <form className="lp-modal-form" onSubmit={handleLogin}>
                 <div className="lp-form-group">
-                  <label className="lp-form-label">Email address</label>
+                  <label className="lp-form-label" htmlFor="login-email">Email address</label>
                   <input
+                    id="login-email"
                     type="email" className="lp-form-input" placeholder="admin@construction.com"
-                    required aria-label="Email address"
+                    required
                     value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)}
                   />
                 </div>
                 <div className="lp-form-group">
-                  <label className="lp-form-label">Password</label>
+                  <label className="lp-form-label" htmlFor="login-password">Password</label>
                   <input
+                    id="login-password"
                     type="password" className="lp-form-input" placeholder="••••••••"
-                    required aria-label="Password"
+                    required
                     value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)}
                   />
                 </div>
@@ -690,43 +692,49 @@ export const LandingPage: React.FC = () => {
             ) : (
               <form className="lp-modal-form" onSubmit={handleRegister}>
                 <div className="lp-form-group">
-                  <label className="lp-form-label">Company name</label>
+                  <label className="lp-form-label" htmlFor="reg-org">Company name</label>
                   <input
+                    id="reg-org"
                     type="text" className="lp-form-input" placeholder="e.g. Godrej Properties"
                     required value={regOrgName} onChange={(e) => setRegOrgName(e.target.value)}
                   />
                 </div>
                 <div className="lp-form-group">
-                  <label className="lp-form-label">Your full name</label>
+                  <label className="lp-form-label" htmlFor="reg-name">Your full name</label>
                   <input
+                    id="reg-name"
                     type="text" className="lp-form-input" placeholder="As per company ID"
                     required value={regFullName} onChange={(e) => setRegFullName(e.target.value)}
                   />
                 </div>
                 <div className="lp-form-group">
-                  <label className="lp-form-label">Work email</label>
+                  <label className="lp-form-label" htmlFor="reg-email">Work email</label>
                   <input
+                    id="reg-email"
                     type="email" className="lp-form-input" placeholder="admin@construction.com"
                     required value={regEmail} onChange={(e) => setRegEmail(e.target.value)}
                   />
                 </div>
                 <div className="lp-form-group">
-                  <label className="lp-form-label">Phone <span style={{ color: 'var(--lp-slate-light)', fontWeight: 400 }}>(optional)</span></label>
+                  <label className="lp-form-label" htmlFor="reg-phone">Phone <span style={{ color: 'var(--lp-slate-light)', fontWeight: 400 }}>(optional)</span></label>
                   <input
+                    id="reg-phone"
                     type="tel" className="lp-form-input" placeholder="+91"
                     value={regPhone} onChange={(e) => setRegPhone(e.target.value)}
                   />
                 </div>
                 <div className="lp-form-group">
-                  <label className="lp-form-label">Password</label>
+                  <label className="lp-form-label" htmlFor="reg-password">Password</label>
                   <input
+                    id="reg-password"
                     type="password" className="lp-form-input" placeholder="At least 8 characters"
                     required minLength={8} value={regPassword} onChange={(e) => setRegPassword(e.target.value)}
                   />
                 </div>
                 <div className="lp-form-group">
-                  <label className="lp-form-label">Confirm password</label>
+                  <label className="lp-form-label" htmlFor="reg-confirm">Confirm password</label>
                   <input
+                    id="reg-confirm"
                     type="password" className="lp-form-input" placeholder="••••••••"
                     required value={regConfirm} onChange={(e) => setRegConfirm(e.target.value)}
                   />

@@ -1,13 +1,15 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Plus, Building2, RefreshCw } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
+import { ErrorBox } from '../components/ui/ErrorBox';
 import { useAuth } from '../hooks/useAuth';
-import { projectsApi } from '../api/projects';
 import { getApiErrorMessage } from '../api/client';
-import type { ProjectResponse, ProjectStatus } from '../types/master';
+import { toast } from '../lib/toast';
+import { useProjects } from '../queries/projects';
+import type { ProjectStatus } from '../types/master';
 import './ProjectMasterForm.css';
 
 const STATUS_VARIANT: Record<ProjectStatus, 'pass' | 'warn' | 'info'> = {
@@ -38,25 +40,13 @@ export const ProjectsList: React.FC = () => {
   const createdName = (location.state as { created?: string } | null)?.created ?? null;
   const { user } = useAuth();
   const canCreate = user?.role === 'CLIENT_ADMIN';
-  const [projects, setProjects] = useState<ProjectResponse[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
-  const load = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      setProjects(await projectsApi.list());
-    } catch (err) {
-      setError(getApiErrorMessage(err, 'Unable to load projects.'));
-    } finally {
-      setLoading(false);
-    }
-  };
+  const { data: projects = [], isPending, isFetching, error, refetch } = useProjects();
 
+  // Surface the "project created" hand-off (set by ProjectMasterForm on navigate).
   useEffect(() => {
-    void load();
-  }, []);
+    if (createdName) toast.success(`Project "${createdName}" created successfully.`);
+  }, [createdName]);
 
   return (
     <div className="qms-form-page">
@@ -66,7 +56,7 @@ export const ProjectsList: React.FC = () => {
           <p className="qms-page-subtitle">All projects registered under your organisation</p>
         </div>
         <div className="qms-page-actions">
-          <Button type="button" variant="outline" icon={<RefreshCw size={16} />} onClick={load} disabled={loading}>
+          <Button type="button" variant="outline" icon={<RefreshCw size={16} />} onClick={() => refetch()} disabled={isFetching}>
             Refresh
           </Button>
           {canCreate && (
@@ -77,26 +67,16 @@ export const ProjectsList: React.FC = () => {
         </div>
       </div>
 
-      {createdName && (
-        <div style={{ padding: '12px 16px', borderRadius: 8, marginBottom: 16, fontSize: 14, background: '#DCFCE7', color: '#166534', border: '1px solid #86EFAC' }}>
-          Project "{createdName}" created successfully.
-        </div>
-      )}
+      {error && <ErrorBox>{getApiErrorMessage(error, 'Unable to load projects.')}</ErrorBox>}
 
-      {error && (
-        <div style={{ padding: '12px 16px', borderRadius: 8, marginBottom: 16, fontSize: 14, background: '#FEE2E2', color: '#991B1B', border: '1px solid #FCA5A5' }}>
-          {error}
-        </div>
-      )}
-
-      {loading ? (
-        <Card className="qms-form-section"><p className="text-muted" style={{ fontSize: 14 }}>Loading projects…</p></Card>
+      {isPending ? (
+        <Card className="qms-form-section"><p className="text-muted qms-text-sm">Loading projects…</p></Card>
       ) : projects.length === 0 && !error ? (
         <Card className="qms-form-section">
-          <div style={{ textAlign: 'center', padding: '32px 16px' }}>
-            <Building2 size={40} className="text-muted" style={{ marginBottom: 12 }} />
-            <h3 className="qms-section-heading-plain" style={{ marginBottom: 6 }}>No projects yet</h3>
-            <p className="text-muted" style={{ fontSize: 14, marginBottom: 16 }}>
+          <div className="qms-empty-state">
+            <Building2 size={40} className="text-muted qms-empty-icon" />
+            <h3 className="qms-section-heading-plain qms-mb-12">No projects yet</h3>
+            <p className="text-muted qms-mb-12">
               {canCreate
                 ? 'Create your first project to start setting up towers, suppliers and quality parameters.'
                 : 'Projects you are assigned to will appear here.'}
@@ -125,9 +105,11 @@ export const ProjectsList: React.FC = () => {
               </thead>
               <tbody>
                 {projects.map((p) => (
-                  <tr key={p.project_id} style={{ cursor: 'pointer' }} onClick={() => navigate(`/app/projects/${p.project_id}`)}>
+                  <tr key={p.project_id}>
                     <td className="font-medium">
-                      {p.project_name}
+                      <button type="button" className="qms-linklike font-medium" onClick={() => navigate(`/app/projects/${p.project_id}`)}>
+                        {p.project_name}
+                      </button>
                       {p.project_code && <div className="qms-text-sm text-muted">{p.project_code}</div>}
                     </td>
                     <td>{p.project_type ? TYPE_LABEL[p.project_type] ?? p.project_type : '—'}</td>

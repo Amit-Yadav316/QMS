@@ -7,6 +7,9 @@
 
 import React, { useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import { Layers } from 'lucide-react';
 import { Input } from '../components/ui/Input';
 import { Button } from '../components/ui/Button';
@@ -19,6 +22,18 @@ import type {
 } from '../types/master';
 import './LoginPage.css';
 
+// All fields optional — DECLINE submits with whatever the party has (or hasn't)
+// entered, and CONFIRM never required corrections either.
+const schema = z.object({
+  contact_email: z.string(),
+  contact_phone: z.string(),
+  primary_contact_name: z.string(), // supplier
+  plant_location: z.string(), // supplier
+  lab_manager_name: z.string(), // lab
+  nabl_certificate_no: z.string(), // lab
+});
+type FormValues = z.infer<typeof schema>;
+
 export const ConfirmRegistration: React.FC = () => {
   const { kind } = useParams<{ kind: string }>();
   const [params] = useSearchParams();
@@ -30,19 +45,16 @@ export const ConfirmRegistration: React.FC = () => {
   const [lab, setLab] = useState<LabConfirmationView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ConfirmationResult | null>(null);
-  const [submitting, setSubmitting] = useState(false);
 
-  // Editable contact fields (prefilled from the loaded record).
-  const [form, setForm] = useState({
-    contact_email: '',
-    contact_phone: '',
-    primary_contact_name: '', // supplier
-    plant_location: '', // supplier
-    lab_manager_name: '', // lab
-    nabl_certificate_no: '', // lab
+  const {
+    register, handleSubmit, reset, formState: { isSubmitting },
+  } = useForm<FormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: {
+      contact_email: '', contact_phone: '', primary_contact_name: '',
+      plant_location: '', lab_manager_name: '', nabl_certificate_no: '',
+    },
   });
-  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
-    setForm((p) => ({ ...p, [k]: e.target.value }));
 
   useEffect(() => {
     if (!token || (kind !== 'supplier' && kind !== 'lab')) {
@@ -57,23 +69,23 @@ export const ConfirmRegistration: React.FC = () => {
           const v = await confirmationsApi.viewLab(token);
           if (cancelled) return;
           setLab(v);
-          setForm((p) => ({
-            ...p,
+          reset({
             contact_email: v.contact_email ?? '',
             contact_phone: v.contact_phone ?? '',
             lab_manager_name: v.lab_manager_name ?? '',
-          }));
+            primary_contact_name: '', plant_location: '', nabl_certificate_no: '',
+          });
         } else {
           const v = await confirmationsApi.viewSupplier(token);
           if (cancelled) return;
           setSupplier(v);
-          setForm((p) => ({
-            ...p,
+          reset({
             contact_email: v.contact_email ?? '',
             contact_phone: v.contact_phone ?? '',
             primary_contact_name: v.primary_contact_name ?? '',
             plant_location: v.plant_location ?? '',
-          }));
+            lab_manager_name: '', nabl_certificate_no: '',
+          });
         }
       } catch (err) {
         if (!cancelled) setError(getApiErrorMessage(err, 'This confirmation link is invalid or has expired.'));
@@ -82,32 +94,29 @@ export const ConfirmRegistration: React.FC = () => {
       }
     })();
     return () => { cancelled = true; };
-  }, [token, kind, isLab]);
+  }, [token, kind, isLab, reset]);
 
-  const submit = async (action: 'CONFIRM' | 'DECLINE') => {
+  const submit = (action: 'CONFIRM' | 'DECLINE') => async (v: FormValues) => {
     setError(null);
-    setSubmitting(true);
     try {
       const res = isLab
         ? await confirmationsApi.submitLab(token, {
             action,
-            contact_email: form.contact_email || null,
-            contact_phone: form.contact_phone || null,
-            lab_manager_name: form.lab_manager_name || null,
-            nabl_certificate_no: form.nabl_certificate_no || null,
+            contact_email: v.contact_email || null,
+            contact_phone: v.contact_phone || null,
+            lab_manager_name: v.lab_manager_name || null,
+            nabl_certificate_no: v.nabl_certificate_no || null,
           })
         : await confirmationsApi.submitSupplier(token, {
             action,
-            contact_email: form.contact_email || null,
-            contact_phone: form.contact_phone || null,
-            primary_contact_name: form.primary_contact_name || null,
-            plant_location: form.plant_location || null,
+            contact_email: v.contact_email || null,
+            contact_phone: v.contact_phone || null,
+            primary_contact_name: v.primary_contact_name || null,
+            plant_location: v.plant_location || null,
           });
       setResult(res);
     } catch (err) {
       setError(getApiErrorMessage(err, 'Could not record your response. Please try again.'));
-    } finally {
-      setSubmitting(false);
     }
   };
 
@@ -157,28 +166,28 @@ export const ConfirmRegistration: React.FC = () => {
             )}
             {error && <div className="qms-auth-error">{error}</div>}
 
-            <div className="qms-auth-form">
-              <Input label="Contact email" type="email" value={form.contact_email} onChange={set('contact_email')} />
-              <Input label="Contact phone" type="tel" value={form.contact_phone} onChange={set('contact_phone')} />
+            <form className="qms-auth-form" onSubmit={handleSubmit(submit('CONFIRM'))} noValidate>
+              <Input label="Contact email" type="email" {...register('contact_email')} />
+              <Input label="Contact phone" type="tel" {...register('contact_phone')} />
               {isLab ? (
                 <>
-                  <Input label="Lab manager name" value={form.lab_manager_name} onChange={set('lab_manager_name')} />
-                  <Input label="NABL certificate no." value={form.nabl_certificate_no} onChange={set('nabl_certificate_no')} />
+                  <Input label="Lab manager name" {...register('lab_manager_name')} />
+                  <Input label="NABL certificate no." {...register('nabl_certificate_no')} />
                 </>
               ) : (
                 <>
-                  <Input label="Primary contact name" value={form.primary_contact_name} onChange={set('primary_contact_name')} />
-                  <Input label="Plant location" value={form.plant_location} onChange={set('plant_location')} />
+                  <Input label="Primary contact name" {...register('primary_contact_name')} />
+                  <Input label="Plant location" {...register('plant_location')} />
                 </>
               )}
 
-              <Button variant="primary" fullWidth disabled={submitting} onClick={() => submit('CONFIRM')}>
-                {submitting ? 'Submitting…' : 'Confirm my details'}
+              <Button type="submit" variant="primary" fullWidth disabled={isSubmitting}>
+                {isSubmitting ? 'Submitting…' : 'Confirm my details'}
               </Button>
-              <Button variant="outline" fullWidth disabled={submitting} onClick={() => submit('DECLINE')}>
+              <Button type="button" variant="outline" fullWidth disabled={isSubmitting} onClick={handleSubmit(submit('DECLINE'))}>
                 This isn't us — decline
               </Button>
-            </div>
+            </form>
           </>
         ) : (
           <div className="qms-auth-error">{error ?? 'This confirmation link is invalid.'}</div>

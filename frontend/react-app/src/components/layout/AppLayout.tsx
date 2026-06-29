@@ -2,6 +2,7 @@ import React from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Topbar } from './Topbar';
+import { ConfirmProvider } from '../ui/ConfirmDialog';
 
 const SEGMENT_TITLES: Record<string, string> = {
   projects: 'Projects',
@@ -23,7 +24,6 @@ const SEGMENT_TITLES: Record<string, string> = {
 function deriveTitle(pathname: string): string {
   const segs = pathname.split('/').filter(Boolean); // e.g. ['app','projects','5','team']
   if (pathname.includes('/pours')) return 'New Pour Card';
-  if (pathname.endsWith('/ncr/new')) return 'New NCR';
   if (pathname.endsWith('/projects/new')) return 'New Project';
   const last = segs[segs.length - 1] ?? '';
   if (SEGMENT_TITLES[last]) return SEGMENT_TITLES[last];
@@ -36,14 +36,16 @@ export const AppLayout: React.FC = () => {
   const title = deriveTitle(location.pathname);
 
   return (
-    <div className="app-container">
-      <Sidebar />
-      <div className="main-content">
-        <Topbar title={title} />
-        <main className="content-area animate-in">
-          <Outlet />
-        </main>
+    <ConfirmProvider>
+      <div className="app-container">
+        <Sidebar />
+        <div className="main-content">
+          <Topbar title={title} />
+          <main className="content-area animate-in">
+            <Outlet />
+          </main>
+        </div>
       </div>
-    </div>
+    </ConfirmProvider>
   );
 };

@@ -803,7 +803,8 @@
   gap: 16px;
 }
 
-.lp-footer-col a {
+.lp-footer-col a,
+.lp-footer-link {
   font-size: 15px;
   color: #CBD5E1;
   text-decoration: none;
@@ -811,7 +812,18 @@
   transition: color 0.2s;
 }
 
-.lp-footer-col a:hover {
+/* link-style buttons (placeholder footer items) */
+.lp-footer-link {
+  background: none;
+  border: none;
+  padding: 0;
+  text-align: left;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.lp-footer-col a:hover,
+.lp-footer-link:hover {
   color: #fff;
 }
 
@@ -896,6 +908,9 @@
   cursor: pointer;
   border-radius: 50%;
   transition: all 0.2s;
+  background: none;
+  border: none;
+  font-family: inherit;
 }
 
 .lp-modal-close:hover {

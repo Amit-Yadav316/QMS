@@ -24,6 +24,15 @@ class Settings(BaseSettings):
     AGENT_MAX_ITERATIONS: int = 4
     AGENT_TIMEOUT_SECONDS: int = 120
 
+    # AISuggestion / RAG (Phase 9) — retrieve similar past CLOSED NCRs and ask
+    # the LLM for a probable root cause + corrective actions. Embeddings come
+    # from a local Ollama embedding model; similarity is computed in Python over
+    # cached vectors (no pgvector — the corpus per project is small, and the
+    # retrieval layer is swappable to pgvector later).
+    OLLAMA_EMBED_MODEL: str = "nomic-embed-text"
+    RAG_TOP_K: int = 3
+    RAG_MIN_SIMILARITY: float = 0.0  # keep all neighbours by default; raise to prune
+
     # JWT
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7

@@ -1,13 +1,15 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, CheckCircle2 } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
+import { ErrorBox } from '../../components/ui/ErrorBox';
 import { useProject } from '../../components/layout/ProjectLayout';
 import { useAuth } from '../../hooks/useAuth';
-import { poursApi } from '../../api/pours';
 import { getApiErrorMessage } from '../../api/client';
+import { toast } from '../../lib/toast';
+import { useCompletePour, usePours } from '../../queries/pours';
 import type { PourResponse, PourStatus } from '../../types/master';
 
 const STATUS_VARIANT: Record<PourStatus, 'pass' | 'warn' | 'info' | 'default'> = {
@@ -26,33 +28,15 @@ export const ProjectPours: React.FC = () => {
   const pid = project.project_id;
   const isQE = user?.role === 'QUALITY_ENGINEER';
 
-  const [rows, setRows] = useState<PourResponse[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [completingId, setCompletingId] = useState<number | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      setRows(await poursApi.list(pid));
-    } catch (err) {
-      setError(getApiErrorMessage(err, 'Unable to load pours.'));
-    } finally {
-      setLoading(false);
-    }
-  }, [pid]);
-
-  useEffect(() => { void load(); }, [load]);
+  const { data: rows = [], isPending, error: loadError } = usePours(pid);
+  const complete = useCompletePour(pid);
 
   const handleComplete = async (p: PourResponse) => {
-    setError(null); setCompletingId(p.pour_id);
     try {
-      await poursApi.complete(pid, p.pour_id, {});
-      void load();
+      await complete.mutateAsync(p.pour_id);
+      toast.success(`Pour ${p.pour_reference ?? `PC-${p.pour_id}`} marked complete.`);
     } catch (err) {
-      setError(getApiErrorMessage(err, 'Unable to complete pour.'));
-    } finally {
-      setCompletingId(null);
+      toast.error(getApiErrorMessage(err, 'Unable to complete pour.'));
     }
   };
 
@@ -70,11 +54,7 @@ export const ProjectPours: React.FC = () => {
         )}
       </div>
 
-      {error && (
-        <div style={{ padding: '12px 16px', borderRadius: 8, marginBottom: 16, fontSize: 14, background: '#FEE2E2', color: '#991B1B', border: '1px solid #FCA5A5' }}>
-          {error}
-        </div>
-      )}
+      {loadError && <ErrorBox>{getApiErrorMessage(loadError, 'Unable to load pours.')}</ErrorBox>}
 
       <Card className="qms-form-section" padding="none">
         <div className="qms-table-container">
@@ -83,7 +63,7 @@ export const ProjectPours: React.FC = () => {
               <tr><th>Reference</th><th>Location</th><th>Grade</th><th>Supplier</th><th>Date</th><th>Volume</th><th>Status</th>{isQE && <th></th>}</tr>
             </thead>
             <tbody>
-              {loading ? (
+              {isPending ? (
                 <tr><td colSpan={isQE ? 8 : 7} className="text-muted">Loading…</td></tr>
               ) : rows.length === 0 ? (
                 <tr><td colSpan={isQE ? 8 : 7} className="text-muted">No pours yet.</td></tr>
@@ -100,8 +80,10 @@ export const ProjectPours: React.FC = () => {
                     {isQE && (
                       <td>
                         {p.status !== 'COMPLETED' && p.status !== 'CANCELLED' && (
-                          <Button variant="ghost" size="sm" icon={<CheckCircle2 size={14} />} disabled={completingId === p.pour_id} onClick={() => handleComplete(p)}>
-                            {completingId === p.pour_id ? 'Saving…' : 'Complete'}
+                          <Button variant="ghost" size="sm" icon={<CheckCircle2 size={14} />}
+                            disabled={complete.isPending && complete.variables === p.pour_id}
+                            onClick={() => handleComplete(p)}>
+                            {complete.isPending && complete.variables === p.pour_id ? 'Saving…' : 'Complete'}
                           </Button>
                         )}
                       </td>

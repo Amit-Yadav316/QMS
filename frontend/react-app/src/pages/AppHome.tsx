@@ -9,7 +9,7 @@ import { useNavigate } from 'react-router-dom';
 import { Building2 } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { useAuth } from '../hooks/useAuth';
-import { projectsApi } from '../api/projects';
+import { useProjects } from '../queries/projects';
 
 export const AppHome: React.FC = () => {
   const { user } = useAuth();
@@ -17,39 +17,31 @@ export const AppHome: React.FC = () => {
   const [empty, setEmpty] = useState(false);
 
   const isAdmin = user?.role === 'CLIENT_ADMIN' || user?.role === 'CONTRACTOR_ADMIN';
+  const { data: projects, isError } = useProjects();
 
   useEffect(() => {
-    let cancelled = false;
-    if (isAdmin) {
+    if (isAdmin || isError) {
       navigate('/app/projects', { replace: true });
       return;
     }
-    (async () => {
-      try {
-        const projects = await projectsApi.list();
-        if (cancelled) return;
-        if (projects.length === 1) {
-          navigate(`/app/projects/${projects[0].project_id}`, { replace: true });
-        } else if (projects.length > 1) {
-          navigate('/app/projects', { replace: true });
-        } else {
-          setEmpty(true);
-        }
-      } catch {
-        if (!cancelled) navigate('/app/projects', { replace: true });
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [isAdmin, navigate]);
+    if (!projects) return; // still loading
+    if (projects.length === 1) {
+      navigate(`/app/projects/${projects[0].project_id}`, { replace: true });
+    } else if (projects.length > 1) {
+      navigate('/app/projects', { replace: true });
+    } else {
+      setEmpty(true);
+    }
+  }, [isAdmin, isError, projects, navigate]);
 
   if (empty) {
     return (
       <div className="qms-form-page">
         <Card className="qms-form-section">
-          <div style={{ textAlign: 'center', padding: '40px 16px' }}>
-            <Building2 size={40} className="text-muted" style={{ marginBottom: 12 }} />
-            <h3 className="qms-section-heading-plain" style={{ marginBottom: 6 }}>No project yet</h3>
-            <p className="text-muted" style={{ fontSize: 14 }}>
+          <div className="qms-empty-state">
+            <Building2 size={40} className="text-muted qms-empty-icon" />
+            <h3 className="qms-section-heading-plain qms-mb-12">No project yet</h3>
+            <p className="text-muted qms-text-sm">
               You haven't been assigned to a project yet. Your admin will add you to one —
               it'll show up here automatically.
             </p>
