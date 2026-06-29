@@ -18,12 +18,42 @@
   padding: 16px 24px;
   border-bottom: 1px solid var(--gray-200);
   background: var(--gray-50);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .qms-chat-title {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+.qms-chat-clear {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--gray-600);
+  background: #fff;
+  border: 1px solid var(--gray-200);
+  border-radius: 8px;
+  padding: 6px 10px;
+  cursor: pointer;
+  transition: border-color 0.2s, color 0.2s;
+}
+
+.qms-chat-clear:hover:not(:disabled) {
+  border-color: var(--red);
+  color: var(--red);
+}
+
+.qms-chat-clear:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .qms-bot-icon {
@@ -207,6 +237,29 @@
 .qms-ctx-meta {
   font-size: 11px;
   color: var(--gray-600);
+}
+
+/* Assistant answers carry markdown-ish bullets — keep their line breaks. */
+.qms-msg-text {
+  white-space: pre-wrap;
+}
+
+/* A deterministic chart rendered under an assistant answer. */
+.qms-chat-chart {
+  margin-top: 12px;
+  padding: 12px;
+  background: #fff;
+  border: 1px solid var(--gray-200);
+  border-radius: 8px;
+  width: 100%;
+  min-width: 280px;
+}
+
+.qms-chat-chart-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--gray-700);
+  margin-bottom: 8px;
 }
 
 /* Tool chips shown under an assistant answer (which data it consulted). */
