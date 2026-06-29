@@ -5,7 +5,6 @@ import { LandingPage } from './pages/LandingPage';
 import { LoginPage } from './pages/LoginPage';
 import { AcceptInvitationPage } from './pages/AcceptInvitationPage';
 import { VerifyOtpPage } from './pages/VerifyOtpPage';
-import { LabRegistrationForm } from './pages/LabRegistrationForm';
 import { ConfirmRegistration } from './pages/ConfirmRegistration';
 import { DispatchFill } from './pages/DispatchFill';
 
@@ -37,7 +36,6 @@ import { ProjectDispatches } from './pages/project/ProjectDispatches';
 import { ProjectCubeTests } from './pages/project/ProjectCubeTests';
 import { GateScan } from './pages/project/GateScan';
 import { NCRDashboard } from './pages/project/NCRDashboard';
-import { NCRForm } from './pages/project/NCRForm';
 import { Chatbot } from './pages/project/Chatbot';
 
 function App() {
@@ -45,7 +43,6 @@ function App() {
     <BrowserRouter>
       <Routes>
         {/* External / public routes */}
-        <Route path="/external/lab-registration" element={<LabRegistrationForm />} />
         <Route path="/external/confirm/:kind" element={<ConfirmRegistration />} />
         <Route path="/dispatch/fill" element={<DispatchFill />} />
         <Route path="/" element={<LandingPage />} />
@@ -76,7 +73,6 @@ function App() {
               <Route path="cube" element={<ProjectCubeTests />} />
               <Route path="gate" element={<GateScan />} />
               <Route path="ncr" element={<NCRDashboard />} />
-              <Route path="ncr/new" element={<NCRForm />} />
               <Route path="chatbot" element={<Chatbot />} />
               <Route path="team" element={<ProjectTeam />} />
               <Route path="contractors" element={<ProjectContractors />} />

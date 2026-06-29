@@ -4,6 +4,9 @@
 
 import React, { useState } from 'react';
 import { Navigate, useParams } from 'react-router-dom';
+import { useForm, useWatch } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import { ScanLine, Truck, CheckCircle, XCircle } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
@@ -13,6 +16,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { useProject } from '../../components/layout/ProjectLayout';
 import { dispatchesApi } from '../../api/dispatches';
 import { getApiErrorMessage } from '../../api/client';
+import { num } from '../../lib/coerce';
 import type { GateTruckView, TruckStatus } from '../../types/master';
 import './GateScan.css';
 
@@ -30,19 +34,33 @@ const row = (label: string, value: React.ReactNode) => (
   </div>
 );
 
+const schema = z.object({
+  token: z.string().min(1, 'Enter a dispatch token'),
+  slump_at_site_mm: z.string(),
+  rejection_reason: z.string(),
+});
+type FormValues = z.infer<typeof schema>;
+
 export const GateScan: React.FC = () => {
   const { user } = useAuth();
   const { project } = useProject();
   const { projectId } = useParams();
   const pid = project.project_id;
 
-  const [token, setToken] = useState('');
   const [view, setView] = useState<GateTruckView | null>(null);
-  const [siteSlump, setSiteSlump] = useState('');
-  const [rejectReason, setRejectReason] = useState('');
   const [showReject, setShowReject] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const {
+    register, handleSubmit, control, getValues, reset: resetForm,
+    formState: { errors },
+  } = useForm<FormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: { token: '', slump_at_site_mm: '', rejection_reason: '' },
+  });
+  const tokenValue = useWatch({ control, name: 'token' });
+  const rejectReason = useWatch({ control, name: 'rejection_reason' });
 
   // Gate scanning is done by the Supervisor.
   if (user && user.role !== 'SUPERVISOR') {
@@ -61,14 +79,10 @@ export const GateScan: React.FC = () => {
     }
   };
 
-  const lookup = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!token.trim()) return;
-    await run(() => dispatchesApi.gateLookup(pid, token.trim()));
-  };
+  const lookup = (v: FormValues) => run(() => dispatchesApi.gateLookup(pid, v.token.trim()));
 
-  const reset = () => {
-    setView(null); setToken(''); setSiteSlump(''); setRejectReason(''); setShowReject(false); setError(null);
+  const scanNext = () => {
+    setView(null); setShowReject(false); setError(null); resetForm();
   };
 
   const t = view?.truck;
@@ -88,13 +102,13 @@ export const GateScan: React.FC = () => {
 
       {!view ? (
         <Card className="qms-scanner-card">
-          <form onSubmit={lookup} style={{ padding: 20 }}>
+          <form onSubmit={handleSubmit(lookup)} noValidate style={{ padding: 20 }}>
             <div style={{ textAlign: 'center', marginBottom: 16, color: 'var(--gray-500)' }}>
               <ScanLine size={40} />
               <p style={{ marginTop: 8, fontSize: 13 }}>Scan the QR on the RMC challan, or paste its token below.</p>
             </div>
-            <Input label="Dispatch token" value={token} onChange={(e) => setToken(e.target.value)} placeholder="Paste token…" />
-            <Button variant="primary" fullWidth disabled={busy || !token.trim()} type="submit" style={{ marginTop: 12 }}>
+            <Input label="Dispatch token" error={errors.token?.message} placeholder="Paste token…" {...register('token')} />
+            <Button variant="primary" fullWidth disabled={busy || !tokenValue.trim()} type="submit" style={{ marginTop: 12 }}>
               {busy ? 'Looking up…' : 'Look up truck'}
             </Button>
           </form>
@@ -121,9 +135,9 @@ export const GateScan: React.FC = () => {
 
           {t?.status === 'FILLED' && (
             <Card className="qms-form-section">
-              <Input label="Slump at site (mm)" type="number" step="1" value={siteSlump} onChange={(e) => setSiteSlump(e.target.value)} placeholder="Optional" />
+              <Input label="Slump at site (mm)" type="number" step="1" placeholder="Optional" {...register('slump_at_site_mm')} />
               <Button variant="primary" fullWidth disabled={busy} style={{ marginTop: 12 }}
-                onClick={() => run(() => dispatchesApi.gateArrive(pid, t.token, { slump_at_site_mm: siteSlump.trim() ? Number(siteSlump) : null }))}>
+                onClick={() => run(() => dispatchesApi.gateArrive(pid, t.token, { slump_at_site_mm: num(getValues('slump_at_site_mm')) ?? null }))}>
                 {busy ? 'Recording…' : 'Scan in at gate'}
               </Button>
             </Card>
@@ -143,11 +157,11 @@ export const GateScan: React.FC = () => {
 
           {t?.status === 'ARRIVED' && showReject && (
             <Card className="qms-form-section">
-              <Input label="Reason for rejection" required value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} placeholder="e.g. Slump out of range, excess transit time" />
+              <Input label="Reason for rejection" required placeholder="e.g. Slump out of range, excess transit time" {...register('rejection_reason')} />
               <div className="qms-form-actions" style={{ marginTop: 12 }}>
-                <Button variant="outline" style={{ flex: 1 }} onClick={() => setShowReject(false)}>Back</Button>
+                <Button type="button" variant="outline" style={{ flex: 1 }} onClick={() => setShowReject(false)}>Back</Button>
                 <Button variant="primary" style={{ flex: 2 }} disabled={busy || !rejectReason.trim()}
-                  onClick={() => run(() => dispatchesApi.gateReject(pid, t.token, { rejection_reason: rejectReason.trim() }))}>
+                  onClick={() => run(() => dispatchesApi.gateReject(pid, t.token, { rejection_reason: getValues('rejection_reason').trim() }))}>
                   {busy ? 'Saving…' : 'Confirm rejection'}
                 </Button>
               </div>
@@ -171,7 +185,7 @@ export const GateScan: React.FC = () => {
             </div>
           )}
 
-          <Button variant="outline" fullWidth onClick={reset} style={{ marginTop: 16 }}>
+          <Button variant="outline" fullWidth onClick={scanNext} style={{ marginTop: 16 }}>
             Scan next vehicle
           </Button>
         </div>

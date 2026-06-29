@@ -1,10 +1,14 @@
 import React, { useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Select } from '../ui/Select';
 import { ErrorBox } from '../ui/ErrorBox';
 import { getApiErrorMessage } from '../../api/client';
+import { str } from '../../lib/coerce';
 import type { LabResponse, PourResponse } from '../../types/master';
 import { useCastSample } from './queries';
 
@@ -15,29 +19,36 @@ interface CastSampleFormProps {
   onClose: () => void;
 }
 
+const schema = z.object({
+  pour_id: z.string().min(1, 'Select a pour'),
+  sample_reference: z.string(),
+  cast_date: z.string().min(1, 'Pick a cast date'),
+  no_of_cubes: z.string().min(1, 'Required').refine((v) => Number(v) > 0, 'Must be at least 1'),
+  lab_id: z.string(),
+});
+type FormValues = z.infer<typeof schema>;
+
 export const CastSampleForm: React.FC<CastSampleFormProps> = ({ pid, pours, labs, onClose }) => {
   const cast = useCastSample(pid);
   const [error, setError] = useState<string | null>(null);
 
-  const [pourId, setPourId] = useState('');
-  const [castDate, setCastDate] = useState('');
-  const [noOfCubes, setNoOfCubes] = useState('3');
-  const [castLabId, setCastLabId] = useState('');
-  const [sampleRef, setSampleRef] = useState('');
+  const {
+    register, handleSubmit, formState: { errors },
+  } = useForm<FormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: { pour_id: '', sample_reference: '', cast_date: '', no_of_cubes: '3', lab_id: '' },
+  });
 
-  const canCast = pourId !== '' && castDate !== '' && Number(noOfCubes) > 0;
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const onSubmit = async (v: FormValues) => {
     setError(null);
     try {
       await cast.mutateAsync({
-        pourId: Number(pourId),
+        pourId: Number(v.pour_id),
         data: {
-          sample_reference: sampleRef.trim() || null,
-          cast_date: castDate,
-          no_of_cubes: Number(noOfCubes),
-          lab_id: castLabId ? Number(castLabId) : null,
+          sample_reference: str(v.sample_reference) ?? null,
+          cast_date: v.cast_date,
+          no_of_cubes: Number(v.no_of_cubes),
+          lab_id: v.lab_id ? Number(v.lab_id) : null,
         },
       });
       onClose();
@@ -48,15 +59,15 @@ export const CastSampleForm: React.FC<CastSampleFormProps> = ({ pid, pours, labs
 
   return (
     <Card className="qms-form-section">
-      <form onSubmit={handleSubmit}>
+      <form onSubmit={handleSubmit(onSubmit)} noValidate>
         <h3 className="qms-section-heading">Cast a cube sample</h3>
         {error && <ErrorBox>{error}</ErrorBox>}
         <div className="qms-grid-3">
           <Select
             label="Pour"
             required
-            value={pourId}
-            onChange={(e) => setPourId(e.target.value)}
+            error={errors.pour_id?.message}
+            {...register('pour_id')}
             options={[
               { label: pours.length ? 'Select pour…' : 'No pours yet — raise one first', value: '' },
               ...pours.map((p) => ({
@@ -67,29 +78,27 @@ export const CastSampleForm: React.FC<CastSampleFormProps> = ({ pid, pours, labs
           />
           <Input
             label="Sample reference"
-            value={sampleRef}
-            onChange={(e) => setSampleRef(e.target.value)}
             placeholder="e.g. CS-001"
+            {...register('sample_reference')}
           />
           <Input
             label="Cast date"
             type="date"
             required
-            value={castDate}
-            onChange={(e) => setCastDate(e.target.value)}
+            error={errors.cast_date?.message}
+            {...register('cast_date')}
           />
           <Input
             label="No. of cubes"
             type="number"
             min="1"
             required
-            value={noOfCubes}
-            onChange={(e) => setNoOfCubes(e.target.value)}
+            error={errors.no_of_cubes?.message}
+            {...register('no_of_cubes')}
           />
           <Select
             label="Lab (optional)"
-            value={castLabId}
-            onChange={(e) => setCastLabId(e.target.value)}
+            {...register('lab_id')}
             options={[
               { label: 'Not assigned yet', value: '' },
               ...labs.map((l) => ({ label: l.lab_name, value: l.lab_id })),
@@ -98,7 +107,7 @@ export const CastSampleForm: React.FC<CastSampleFormProps> = ({ pid, pours, labs
         </div>
         <div className="qms-form-actions qms-cube-actions">
           <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
-          <Button type="submit" variant="primary" disabled={cast.isPending || !canCast}>
+          <Button type="submit" variant="primary" disabled={cast.isPending}>
             {cast.isPending ? 'Saving…' : 'Cast sample'}
           </Button>
         </div>

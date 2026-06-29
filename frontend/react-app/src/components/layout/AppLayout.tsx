@@ -24,7 +24,6 @@ const SEGMENT_TITLES: Record<string, string> = {
 function deriveTitle(pathname: string): string {
   const segs = pathname.split('/').filter(Boolean); // e.g. ['app','projects','5','team']
   if (pathname.includes('/pours')) return 'New Pour Card';
-  if (pathname.endsWith('/ncr/new')) return 'New NCR';
   if (pathname.endsWith('/projects/new')) return 'New Project';
   const last = segs[segs.length - 1] ?? '';
   if (SEGMENT_TITLES[last]) return SEGMENT_TITLES[last];
