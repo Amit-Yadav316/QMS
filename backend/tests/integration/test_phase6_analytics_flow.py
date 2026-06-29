@@ -38,7 +38,7 @@ class TestOverviewKpis:
         _, qe_token, pid, pour_id = await _qe_pour(client, db_session)
         sample_id = (await _cast_sample(client, qe_token, pid, pour_id)).json()["sample_id"]
         # M30, 28-day → required 30.0; observed 32.0 → PASS.
-        await _record_test(client, qe_token, pid, sample_id, observed_strength_mpa=32.0)
+        await _record_test(client, db_session, qe_token, pid, sample_id, observed_strength_mpa=32.0)
 
         body = (await _overview(client, qe_token, pid)).json()
         assert body["pour_count"] == 1
@@ -53,7 +53,7 @@ class TestOverviewKpis:
         _, qe_token, pid, pour_id = await _qe_pour(client, db_session)
         sample_id = (await _cast_sample(client, qe_token, pid, pour_id)).json()["sample_id"]
         # observed 20.0 < 85% of 30 (25.5) → CRITICAL_FAILURE → auto-NCR.
-        await _record_test(client, qe_token, pid, sample_id, observed_strength_mpa=20.0)
+        await _record_test(client, db_session, qe_token, pid, sample_id, observed_strength_mpa=20.0)
 
         body = (await _overview(client, qe_token, pid)).json()
         assert body["critical_count"] == 1
@@ -69,12 +69,12 @@ class TestOverviewKpis:
         sample_id = (await _cast_sample(client, qe_token, pid, pour_id)).json()["sample_id"]
         # M30, 7-day → required 19.5; observed 17.0 (>= 85% of 19.5) → FAIL.
         await _record_test(
-            client, qe_token, pid, sample_id,
+            client, db_session, qe_token, pid, sample_id,
             test_age_days=7, test_date="2026-07-22", observed_strength_mpa=17.0,
         )
         # M30, 28-day → required 30.0; observed 32.0 → PASS.
         await _record_test(
-            client, qe_token, pid, sample_id,
+            client, db_session, qe_token, pid, sample_id,
             test_age_days=28, test_date="2026-08-12", observed_strength_mpa=32.0,
         )
 
@@ -91,7 +91,7 @@ class TestQualityAnalytics:
         _, qe_token, pid, pour_id = await _qe_pour(client, db_session)
         sample_id = (await _cast_sample(client, qe_token, pid, pour_id)).json()["sample_id"]
         await _record_test(
-            client, qe_token, pid, sample_id,
+            client, db_session, qe_token, pid, sample_id,
             test_date="2026-08-12", observed_strength_mpa=32.0,
         )
 
@@ -112,7 +112,7 @@ class TestQualityAnalytics:
     async def test_quality_date_filter_excludes_out_of_range(self, client, db_session):
         _, qe_token, pid, pour_id = await _qe_pour(client, db_session)
         sample_id = (await _cast_sample(client, qe_token, pid, pour_id)).json()["sample_id"]
-        await _record_test(client, qe_token, pid, sample_id, test_date="2026-08-12")
+        await _record_test(client, db_session, qe_token, pid, sample_id, test_date="2026-08-12")
 
         body = (
             await client.get(
@@ -128,7 +128,7 @@ class TestSupplierScorecard:
     async def test_scorecard_aggregates_supplier(self, client, db_session):
         _, qe_token, pid, pour_id = await _qe_pour(client, db_session)
         sample_id = (await _cast_sample(client, qe_token, pid, pour_id)).json()["sample_id"]
-        await _record_test(client, qe_token, pid, sample_id, observed_strength_mpa=32.0)
+        await _record_test(client, db_session, qe_token, pid, sample_id, observed_strength_mpa=32.0)
 
         rows = (
             await client.get(
@@ -146,7 +146,7 @@ class TestSupplierScorecard:
     async def test_scorecard_honours_date_filter(self, client, db_session):
         _, qe_token, pid, pour_id = await _qe_pour(client, db_session)
         sample_id = (await _cast_sample(client, qe_token, pid, pour_id)).json()["sample_id"]
-        await _record_test(client, qe_token, pid, sample_id, observed_strength_mpa=32.0)
+        await _record_test(client, db_session, qe_token, pid, sample_id, observed_strength_mpa=32.0)
         # A future date-from filters out the supplier's pours entirely.
         rows = (
             await client.get(
@@ -162,7 +162,7 @@ class TestNcrsBySupplier:
         _, qe_token, pid, pour_id = await _qe_pour(client, db_session)
         sample_id = (await _cast_sample(client, qe_token, pid, pour_id)).json()["sample_id"]
         # observed 20.0 → CRITICAL_FAILURE → auto-NCR (open + critical).
-        await _record_test(client, qe_token, pid, sample_id, observed_strength_mpa=20.0)
+        await _record_test(client, db_session, qe_token, pid, sample_id, observed_strength_mpa=20.0)
 
         rows = (
             await client.get(
@@ -180,7 +180,7 @@ class TestNcrsBySupplier:
     async def test_ncrs_by_supplier_honours_grade_filter(self, client, db_session):
         _, qe_token, pid, pour_id = await _qe_pour(client, db_session)
         sample_id = (await _cast_sample(client, qe_token, pid, pour_id)).json()["sample_id"]
-        await _record_test(client, qe_token, pid, sample_id, observed_strength_mpa=20.0)
+        await _record_test(client, db_session, qe_token, pid, sample_id, observed_strength_mpa=20.0)
         # Filtering to a grade that never poured leaves no NCRs.
         rows = (
             await client.get(

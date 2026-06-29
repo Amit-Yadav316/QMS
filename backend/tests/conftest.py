@@ -187,6 +187,9 @@ async def client(connection, monkeypatch) -> AsyncClient:
     monkeypatch.setattr(
         "app.services.dispatch_service.send_truck_result_email", _no_email
     )
+    monkeypatch.setattr(
+        "app.services.cube_service.send_lab_report_request_email", _no_email
+    )
 
     async def _override_get_db():
         # Mirror production get_db: commit on success, rollback on error. Here

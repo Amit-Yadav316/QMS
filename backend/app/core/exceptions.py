@@ -145,6 +145,18 @@ class PourAlreadyCompletedError(HTTPException):
         )
 
 
+class GradeNotApprovedError(HTTPException):
+    """A pour was raised for a grade that has no APPROVED mix design on the
+    project — only grades with an approved mix may be poured."""
+
+    def __init__(self):
+        super().__init__(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This grade has no approved mix design on the project. "
+            "Get a mix design approved before raising a pour for it.",
+        )
+
+
 class GradeMismatchWarning(HTTPException):
     def __init__(self, ordered: str, received: str):
         super().__init__(
@@ -169,6 +181,18 @@ class NCRStateError(HTTPException):
     """An NCR action was attempted that the current status doesn't allow — an
     illegal status transition, closing without a root cause or with corrective
     actions still outstanding, or mutating a closed NCR."""
+
+    def __init__(self, detail: str):
+        super().__init__(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=detail,
+        )
+
+
+class LabReportStateError(HTTPException):
+    """A lab cube-report action was attempted out of order — submitting a report
+    before the testing day is established, re-submitting a milestone that's
+    already in, or using an unknown/invalid report milestone age."""
 
     def __init__(self, detail: str):
         super().__init__(

@@ -99,6 +99,10 @@ class CubeTest(Base):
         BigInteger, ForeignKey("auth.users.user_id"), nullable=True
     )
     lab_report_reference: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # PDF report the lab uploaded for this milestone, stored in master.documents.
+    report_document_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("master.documents.document_id"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

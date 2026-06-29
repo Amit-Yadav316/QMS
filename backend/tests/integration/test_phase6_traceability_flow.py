@@ -55,10 +55,17 @@ class TestTraceSearch:
     async def test_search_by_ncr_number_with_worst_status(self, client, db_session):
         _, qe_token, pid, pour_id = await _qe_pour(client, db_session)
         sample_id = (await _cast_sample(client, qe_token, pid, pour_id)).json()["sample_id"]
-        # PASS then CRITICAL on the same sample → worst-wins is CRITICAL.
-        await _record_test(client, qe_token, pid, sample_id, observed_strength_mpa=32.0)
+        # 7-day PASS then 28-day CRITICAL on the same sample → worst-wins is CRITICAL,
+        # and the 28-day acceptance failure carries the auto-raised NCR.
+        await _record_test(
+            client, db_session, qe_token, pid, sample_id,
+            test_age_days=7, observed_strength_mpa=32.0,
+        )
         ncr_number = (
-            await _record_test(client, qe_token, pid, sample_id, observed_strength_mpa=20.0)
+            await _record_test(
+                client, db_session, qe_token, pid, sample_id,
+                test_age_days=28, observed_strength_mpa=20.0,
+            )
         ).json()["ncr_number"]
         assert ncr_number
 
@@ -81,7 +88,7 @@ class TestTraceDetail:
         sample_id = (
             await _cast_sample(client, qe_token, pid, pour_id, sample_reference="CS-1")
         ).json()["sample_id"]
-        await _record_test(client, qe_token, pid, sample_id, observed_strength_mpa=20.0)
+        await _record_test(client, db_session, qe_token, pid, sample_id, observed_strength_mpa=20.0)
 
         detail = (
             await client.get(

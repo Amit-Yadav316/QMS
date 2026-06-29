@@ -1,8 +1,9 @@
-"""cube_tests.py router — Phase 4 cube samples and strength tests.
+"""cube_tests.py router — Phase 4 cube samples + lab-dispatched strength tests.
 
 Project-scoped under /projects/{id}. The Quality Engineer casts cube samples
-from a pour and records strength tests against them; the quality engine grades
-each test and auto-raises an NCR on failure. Listing (samples, tests) is open to
+from a pour and dispatches them to a lab; the lab submits the 7/14/28-day
+strength reports through a tokenised link (see routers/lab_report.py), and a
+failing 28-day result auto-raises an NCR. Listing (samples, tests) is open to
 anyone who can view the project. The NCR lifecycle lives in ncrs.py (Phase 5).
 """
 
@@ -15,12 +16,8 @@ from app.core.project_access import require_project
 from app.database.session import get_db
 from app.models.auth import User, UserRole
 from app.models.master import Project
-from app.schemas.quality import (
-    CubeSampleCreate,
-    CubeSampleResponse,
-    CubeTestCreate,
-    CubeTestResponse,
-)
+from app.schemas.lab_report import LabReportLink
+from app.schemas.quality import CubeSampleCreate, CubeSampleResponse
 from app.services.cube_service import CubeService
 
 router = APIRouter(prefix="/projects", tags=["quality"])
@@ -29,7 +26,7 @@ router = APIRouter(prefix="/projects", tags=["quality"])
 def _ensure_quality_engineer(user: User) -> None:
     if user.role != UserRole.QUALITY_ENGINEER:
         raise PermissionDeniedError(
-            "Only a quality engineer can cast cube samples or record test results"
+            "Only a quality engineer can cast cube samples or manage lab reports"
         )
 
 
@@ -48,6 +45,8 @@ async def cast_sample(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    """Cast a cube sample from a pour. When a lab with a contact email is set,
+    this also dispatches the sample — emailing the lab its report link."""
     _ensure_quality_engineer(current_user)
     return await CubeService(db).create_sample(project, pour_id, data, current_user)
 
@@ -72,20 +71,36 @@ async def list_samples(
     return await CubeService(db).list_samples_for_project(project)
 
 
-# ── Tests ────────────────────────────────────────────────────────────────────
+# ── Lab report dispatch (manual resend) ───────────────────────────────────────
 
 
 @router.post(
-    "/{project_id}/samples/{sample_id}/tests",
-    response_model=CubeTestResponse,
-    status_code=201,
+    "/{project_id}/samples/{sample_id}/report-link",
+    response_model=LabReportLink,
 )
-async def record_test(
+async def get_report_link(
     sample_id: int,
-    data: CubeTestCreate,
     project: Project = Depends(require_project),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    """The lab's tokenised report URL for this sample, for the QE to copy/share.
+    Mints a token if the sample doesn't have one yet. Does not send email."""
     _ensure_quality_engineer(current_user)
-    return await CubeService(db).record_test(project, sample_id, data, current_user)
+    return await CubeService(db).get_report_link(project, sample_id, current_user)
+
+
+@router.post(
+    "/{project_id}/samples/{sample_id}/resend-report-link",
+    response_model=CubeSampleResponse,
+)
+async def resend_report_link(
+    sample_id: int,
+    project: Project = Depends(require_project),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Re-email the lab its report link — the manual nudge when a 7/14/28-day
+    milestone is due. (No automated scheduler; the link itself is long-lived.)"""
+    _ensure_quality_engineer(current_user)
+    return await CubeService(db).resend_report_link(project, sample_id, current_user)

@@ -21,6 +21,15 @@ cleanup debt and deliberately-deferred work. Keep it current as you go.
 
 ## Deferred (needs infra, a decision, or an external dependency)
 
+- [ ] **Automated lab-report reminders (7/14/28-day).** The lab cube-report flow
+      is live (token link → lab submits 7/14/28-day reports → auto-NCR on a failing
+      28-day result). Reminders are **manual** today (the QE clicks "resend report
+      link" per `routers/cube_tests.py::resend_report_link`). Automating the nudge
+      needs a scheduler (APScheduler in-process, or a `scripts/` runner on
+      Task Scheduler/cron) that sweeps samples whose milestone is due and re-emails
+      the lab. `send_lab_report_request_email(..., is_reminder=True)` already exists;
+      only the scheduling layer is missing.
+
 - [ ] **Register/resend rate-limiting by IP.** OTP brute-force cap + 60s resend
       cooldown are done; bombing via *varying* emails still needs request-level
       (IP) throttling middleware (e.g. slowapi/Redis). Out of scope for a code

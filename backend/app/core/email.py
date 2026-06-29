@@ -264,6 +264,62 @@ async def send_truck_result_email(
     await fastmail.send_message(message)
 
 
+async def send_lab_report_request_email(
+    lab_email: str,
+    lab_name: str,
+    project_name: str,
+    sample_reference: str,
+    grade: str,
+    registered_by: str,
+    token: str,
+    is_reminder: bool = False,
+) -> None:
+    """Sent when the QE dispatches a cube sample to a lab (and on manual resend).
+
+    The lab establishes the testing day, then submits the 7/14/28-day strength
+    reports through this single tokenised link — NO login needed.
+    Link goes to: {FRONTEND_URL}/external/lab-report?token={token}
+    """
+    report_url = f"{settings.FRONTEND_URL}/external/lab-report?token={token}"
+    lead = (
+        "This is a reminder that cube test results are pending for"
+        if is_reminder
+        else f"<strong>{registered_by}</strong> has dispatched a cube sample to you for"
+    )
+    html_body = f"""
+    <div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:auto">
+      <h2 style="color:#1e293b">Cube strength reports — {project_name}</h2>
+      <p>Hi {lab_name},</p>
+      <p>{lead} the project <strong>{project_name}</strong>
+      (sample <strong>{sample_reference}</strong>, grade <strong>{grade}</strong>).</p>
+      <p>Open the link below to set the testing day and submit the
+      <strong>7, 14 and 28-day</strong> strength reports (a PDF can be attached
+      to each). No account or password is needed.</p>
+      <p style="margin:24px 0">
+        <a href="{report_url}"
+           style="background:#1A56DB;color:#fff;text-decoration:none;
+                  padding:12px 24px;border-radius:8px;font-weight:600">
+          Open report form
+        </a>
+      </p>
+      <p style="color:#64748b;font-size:13px">This link is unique to this sample —
+      please don't share it.</p>
+    </div>
+    """
+    subject = (
+        f"Pending cube reports — {sample_reference} — {project_name}"
+        if is_reminder
+        else f"Cube sample dispatched — {sample_reference} — {project_name}"
+    )
+    message = MessageSchema(
+        subject=subject,
+        recipients=[lab_email],
+        body=html_body,
+        subtype=MessageType.html,
+    )
+    await fastmail.send_message(message)
+
+
 async def send_lab_reminder_email(
     lab_email: str,
     lab_name: str,

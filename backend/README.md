@@ -190,7 +190,7 @@ Project-scoped endpoints (visibility + management are scoped per project):
 | Catalog/setup | `/grades`, `/components`, `.../towers`, `.../floors`, `.../mix-designs` | viewer / managers |
 | Pours | `GET/POST .../pours`, `PATCH .../pours/{id}/complete` | QE |
 | RMC dispatch | `POST .../dispatches` (QE) · public `/external/dispatch?token=` (supplier fill) · `.../gate/{token}` arrive/accept/reject (SUPERVISOR) | mixed |
-| Cube tests | `POST .../pours/{pid}/samples`, `POST .../samples/{sid}/tests` (QE) · `GET .../samples`, `.../ncrs` | QE / viewer |
+| Cube tests | `POST .../pours/{pid}/samples` (QE casts + dispatches to lab) · `POST .../samples/{sid}/report-link`, `.../resend-report-link` (QE) · public `/external/lab-report?token=` (lab submits 7/14/28-day reports) · `GET .../samples`, `.../ncrs` | QE / lab / viewer |
 | NCR lifecycle | `GET .../ncrs[/{id}]` · `PATCH .../ncrs/{id}`, `.../corrective-actions`, `.../penalties` (QE) | viewer / QE |
 | **AI suggestions** | `GET .../ncrs/{id}/ai-suggestion` (viewer) · `POST` generate, `POST .../apply` (QE) | viewer / QE |
 | Analytics | `GET .../analytics/{overview,quality,suppliers}` | viewer |

@@ -241,15 +241,31 @@ async def _run_cube(c, qe_tok, pid, *, pour_id, grade_min, outcome, cast_date, t
         ),
         "cast sample",
     ).json()
+    # Results now come from the lab through its tokenised link. Grab the link the
+    # QE would share, then submit the 28-day report the way a lab would.
+    link = _ok(
+        await c.post(
+            f"{API}/projects/{pid}/samples/{sample['sample_id']}/report-link",
+            headers=_bearer(qe_tok),
+        ),
+        "get lab report link",
+    ).json()
+    token = link["token"]
+    _ok(
+        await c.post(
+            f"{API}/external/lab-report/start?token={token}",
+            json={"testing_started_on": cast_date},
+        ),
+        "lab: start testing",
+    )
     observed = round(grade_min * _FACTOR[outcome], 1)
     _ok(
         await c.post(
-            f"{API}/projects/{pid}/samples/{sample['sample_id']}/tests",
-            json={"test_age_days": 28, "test_date": test_date,
-                  "observed_strength_mpa": observed, "lab_id": lab_id},
-            headers=_bearer(qe_tok),
+            f"{API}/external/lab-report?token={token}",
+            data={"test_age_days": "28", "test_date": test_date,
+                  "observed_strength_mpa": str(observed)},
         ),
-        "record test",
+        "lab: submit 28-day report",
     )
 
 
@@ -377,6 +393,30 @@ async def seed() -> None:
         comp_by = {c2["component_type"]: c2 for c2 in components}
         grade_by = {g["grade_name"]: g for g in grades}
         fallback_grade = grades[0]
+
+        # A pour may only use a grade with an APPROVED mix design — seed one per
+        # (supplier, grade) the plan uses.
+        seen_mix: set[tuple[int, int]] = set()
+        for _ti, _fi, _comp, gname, skey, *_rest in POUR_PLAN:
+            grade = grade_by.get(gname) or fallback_grade
+            supplier = suppliers[skey]
+            key = (supplier["supplier_id"], grade["grade_id"])
+            if key in seen_mix:
+                continue
+            seen_mix.add(key)
+            _ok(
+                await c.post(
+                    f"{API}/projects/{pid}/mix-designs",
+                    json={
+                        "supplier_id": supplier["supplier_id"],
+                        "grade_id": grade["grade_id"],
+                        "wc_ratio": 0.45,
+                        "approval_status": "APPROVED",
+                    },
+                    headers=_bearer(contractor_tok),
+                ),
+                "create mix design",
+            )
 
         ncr_pours = 0
         for seq, (ti, fi, comp, gname, skey, outcome, cast, test, truck) in enumerate(POUR_PLAN, 1):

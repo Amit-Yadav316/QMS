@@ -258,6 +258,18 @@ class CubeSample(Base):
         Boolean, default=False, nullable=False
     )
     lab_dispatch_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # ── Lab report token flow ──
+    # When the QE casts a sample against a lab, a single long-lived token is
+    # issued and emailed; the lab submits the 7/14/28-day reports through it
+    # (no portal account). ``testing_started_on`` is the day the lab establishes
+    # as the start of curing/testing — it anchors the milestone due-date schedule.
+    report_token: Mapped[str | None] = mapped_column(
+        String(100), nullable=True, unique=True
+    )
+    report_token_sent_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    testing_started_on: Mapped[date | None] = mapped_column(Date, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

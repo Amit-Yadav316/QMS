@@ -14,6 +14,7 @@ from app.routers import (
     dispatches,
     documents,
     floors,
+    lab_report,
     labs,
     mix_designs,
     ncrs,
@@ -65,6 +66,7 @@ def create_app() -> FastAPI:
     app.include_router(dispatches.router, prefix=settings.API_V1_PREFIX)
     app.include_router(dispatch_token.router, prefix=settings.API_V1_PREFIX)
     app.include_router(cube_tests.router, prefix=settings.API_V1_PREFIX)
+    app.include_router(lab_report.router, prefix=settings.API_V1_PREFIX)
     app.include_router(ncrs.router, prefix=settings.API_V1_PREFIX)
     app.include_router(ai_suggestions.router, prefix=settings.API_V1_PREFIX)
     app.include_router(analytics.router, prefix=settings.API_V1_PREFIX)
