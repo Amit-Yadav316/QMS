@@ -3,11 +3,10 @@ email.py
 --------
 Async email sender using fastapi-mail + Jinja2 templates.
 
-Every email in the system goes through one of these functions:
-  send_invitation_email()     → OrgInvitation flow
-  send_truck_dispatch_email() → RMC supplier truck form link
-  send_truck_result_email()   → Accepted/rejected notification to supplier
-  send_lab_reminder_email()   → Lab pending result reminder
+Every email body lives as an HTML file under ``app/templates/email/`` and is
+rendered through ``_render_template`` (autoescaped) — no HTML is built inline.
+Senders: invitation, OTP, supplier/lab confirmation, mix-design request, truck
+dispatch, truck result, lab-report request, lab reminder.
 """
 
 from pathlib import Path
@@ -91,19 +90,10 @@ async def send_otp_email(
 ) -> None:
     """
     Sent during account activation (signup / invite-accept) with a one-time
-    verification code. Built inline (no template file) to keep it self-contained.
+    verification code.
     """
     greeting = f"Hi {full_name}," if full_name else "Hi,"
-    html_body = f"""
-    <div style="font-family:Arial,Helvetica,sans-serif;max-width:480px;margin:auto">
-      <h2 style="color:#1e293b">Verify your email</h2>
-      <p>{greeting}</p>
-      <p>Use this code to activate your Strata account:</p>
-      <p style="font-size:32px;font-weight:700;letter-spacing:8px;color:#2563eb">{code}</p>
-      <p style="color:#64748b;font-size:13px">This code expires in 10 minutes.
-      If you didn't request it, you can ignore this email.</p>
-    </div>
-    """
+    html_body = _render_template("otp.html", {"greeting": greeting, "code": code})
 
     message = MessageSchema(
         subject="Your Strata verification code",
@@ -125,25 +115,13 @@ async def _send_confirmation_email(
     confirm_url: str,
 ) -> None:
     """Shared body for the supplier/lab confirmation handshake email."""
-    html_body = f"""
-    <div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:auto">
-      <h2 style="color:#1e293b">Confirm your details on Strata</h2>
-      <p>Hi {party_name},</p>
-      <p><strong>{registered_by}</strong> has registered your {role_label} on
-      <strong>Strata</strong> for the project <strong>{project_name}</strong>.</p>
-      <p>Please confirm your contact details so you can start receiving
-      requests. No account or password is needed.</p>
-      <p style="margin:24px 0">
-        <a href="{confirm_url}"
-           style="background:#1A56DB;color:#fff;text-decoration:none;
-                  padding:12px 24px;border-radius:8px;font-weight:600">
-          Review &amp; confirm
-        </a>
-      </p>
-      <p style="color:#64748b;font-size:13px">If this wasn't meant for you, you
-      can decline on that page. This link is unique to you — please don't share it.</p>
-    </div>
-    """
+    html_body = _render_template("confirmation.html", {
+        "party_name": party_name,
+        "role_label": role_label,
+        "registered_by": registered_by,
+        "project_name": project_name,
+        "confirm_url": confirm_url,
+    })
     message = MessageSchema(
         subject=f"Confirm your {role_label} for {project_name} — Strata",
         recipients=[recipient],
@@ -189,27 +167,13 @@ async def send_mix_design_request_email(
     Link goes to: {FRONTEND_URL}/external/mix-design?token={token}
     """
     submit_url = f"{settings.FRONTEND_URL}/external/mix-design?token={token}"
-    html_body = f"""
-    <div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:auto">
-      <h2 style="color:#1e293b">Mix design submission — {project_name}</h2>
-      <p>Hi {supplier_name},</p>
-      <p><strong>{registered_by}</strong> has requested mix designs from you for
-      the project <strong>{project_name}</strong> for these grades:
-      <strong>{grades}</strong>.</p>
-      <p>Open the link below to submit one mix design per grade. The project's
-      quality engineer reviews each one before it can be used. No account or
-      password is needed.</p>
-      <p style="margin:24px 0">
-        <a href="{submit_url}"
-           style="background:#1A56DB;color:#fff;text-decoration:none;
-                  padding:12px 24px;border-radius:8px;font-weight:600">
-          Submit mix designs
-        </a>
-      </p>
-      <p style="color:#64748b;font-size:13px">This link is unique to your plant —
-      please don't share it.</p>
-    </div>
-    """
+    html_body = _render_template("mix_design_request.html", {
+        "supplier_name": supplier_name,
+        "project_name": project_name,
+        "grades": grades,
+        "registered_by": registered_by,
+        "submit_url": submit_url,
+    })
     message = MessageSchema(
         subject=f"Mix designs requested — {project_name}",
         recipients=[supplier_email],
@@ -325,31 +289,15 @@ async def send_lab_report_request_email(
     Link goes to: {FRONTEND_URL}/external/lab-report?token={token}
     """
     report_url = f"{settings.FRONTEND_URL}/external/lab-report?token={token}"
-    lead = (
-        "This is a reminder that cube test results are pending for"
-        if is_reminder
-        else f"<strong>{registered_by}</strong> has dispatched a cube sample to you for"
-    )
-    html_body = f"""
-    <div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:auto">
-      <h2 style="color:#1e293b">Cube strength reports — {project_name}</h2>
-      <p>Hi {lab_name},</p>
-      <p>{lead} the project <strong>{project_name}</strong>
-      (sample <strong>{sample_reference}</strong>, grade <strong>{grade}</strong>).</p>
-      <p>Open the link below to set the testing day and submit the
-      <strong>7, 14 and 28-day</strong> strength reports (a PDF can be attached
-      to each). No account or password is needed.</p>
-      <p style="margin:24px 0">
-        <a href="{report_url}"
-           style="background:#1A56DB;color:#fff;text-decoration:none;
-                  padding:12px 24px;border-radius:8px;font-weight:600">
-          Open report form
-        </a>
-      </p>
-      <p style="color:#64748b;font-size:13px">This link is unique to this sample —
-      please don't share it.</p>
-    </div>
-    """
+    html_body = _render_template("lab_report_request.html", {
+        "lab_name": lab_name,
+        "project_name": project_name,
+        "sample_reference": sample_reference,
+        "grade": grade,
+        "registered_by": registered_by,
+        "report_url": report_url,
+        "is_reminder": is_reminder,
+    })
     subject = (
         f"Pending cube reports — {sample_reference} — {project_name}"
         if is_reminder
