@@ -28,6 +28,7 @@ export const LabReport: React.FC = () => {
   const [notice, setNotice] = useState<string | null>(null);
 
   const [startDate, setStartDate] = useState('');
+  const [receivedDate, setReceivedDate] = useState('');
   const [observed, setObserved] = useState<Record<number, string>>({});
   const [files, setFiles] = useState<Record<number, File | null>>({});
   const [busyAge, setBusyAge] = useState<number | null>(null);
@@ -46,6 +47,7 @@ export const LabReport: React.FC = () => {
         if (!cancelled) {
           setView(v);
           setStartDate(v.testing_started_on ?? v.cast_date ?? '');
+          setReceivedDate(v.cube_received_on ?? v.cast_date ?? '');
         }
       } catch (err) {
         if (!cancelled) setError(getApiErrorMessage(err, 'This lab report link is invalid or has expired.'));
@@ -61,7 +63,10 @@ export const LabReport: React.FC = () => {
     setError(null);
     setStarting(true);
     try {
-      const v = await labReportApi.start(token, { testing_started_on: startDate });
+      const v = await labReportApi.start(token, {
+        testing_started_on: startDate,
+        cube_received_on: receivedDate || null,
+      });
       setView(v);
     } catch (err) {
       setError(getApiErrorMessage(err, 'Could not set the testing day. Please try again.'));
@@ -131,9 +136,16 @@ export const LabReport: React.FC = () => {
             {!view.testing_started_on ? (
               <form className="qms-auth-form" onSubmit={start} noValidate>
                 <p className="qms-text-sm text-muted" style={{ marginBottom: 8 }}>
-                  First, confirm the day testing/curing started. This sets when the
-                  7, 14 and 28-day reports are due.
+                  First, confirm when you received the cubes and the day
+                  testing/curing started. This sets when the 7, 14 and 28-day
+                  reports are due.
                 </p>
+                <Input
+                  label="Cubes received on (optional)"
+                  type="date"
+                  value={receivedDate}
+                  onChange={(e) => setReceivedDate(e.target.value)}
+                />
                 <Input
                   label="Testing start date"
                   type="date"
@@ -148,6 +160,7 @@ export const LabReport: React.FC = () => {
             ) : (
               <>
                 <p className="qms-text-sm text-muted" style={{ marginBottom: 12 }}>
+                  {view.cube_received_on ? <>Cubes received {fmtDate(view.cube_received_on)}. </> : null}
                   Testing started {fmtDate(view.testing_started_on)}. Submit each
                   report below when its cubes are tested.
                 </p>

@@ -78,6 +78,11 @@ export interface GateTruckView {
   grade_name: string | null;
   volume_ordered_cum: number | null;
   slump_at_site_mm: number | null;
+  // Concrete placement window: minutes in transit (dispatch → now/arrival) vs
+  // the 90-min IS-456 limit. A truck arriving past the window is auto-rejected.
+  dispatch_time: string | null;
+  transit_minutes: number | null;
+  placement_window_minutes: number | null;
   truck: TruckInfo;
 }
 

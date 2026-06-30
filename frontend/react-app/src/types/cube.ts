@@ -43,6 +43,7 @@ export interface CubeSampleResponse {
   expected_result_date: string | null;
   lab_dispatch_notes: string | null;
   report_link_sent: boolean;
+  cube_received_on: string | null;
   testing_started_on: string | null;
   created_at: string;
   pour_reference: string | null;
@@ -78,6 +79,7 @@ export interface LabReportView {
   pour_reference: string | null;
   cast_date: string | null;
   no_of_cubes: number | null;
+  cube_received_on: string | null;
   testing_started_on: string | null;
   is_expired: boolean;
   milestones: LabReportMilestone[];
@@ -85,6 +87,7 @@ export interface LabReportView {
 
 export interface LabReportStart {
   testing_started_on: string;
+  cube_received_on?: string | null;
 }
 
 export interface LabReportSubmit {

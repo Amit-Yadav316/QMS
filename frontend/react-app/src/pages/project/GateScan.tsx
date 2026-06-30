@@ -34,6 +34,22 @@ const row = (label: string, value: React.ReactNode) => (
   </div>
 );
 
+// Is the load past its concrete placement window (dispatch → gate)?
+const isPastWindow = (v: GateTruckView): boolean =>
+  v.transit_minutes != null &&
+  v.placement_window_minutes != null &&
+  v.transit_minutes > v.placement_window_minutes;
+
+const transitValue = (v: GateTruckView): React.ReactNode => {
+  if (v.transit_minutes == null || v.placement_window_minutes == null) return '—';
+  const over = isPastWindow(v);
+  return (
+    <span style={{ color: over ? '#991B1B' : '#166534' }}>
+      {v.transit_minutes} min / {v.placement_window_minutes} min window
+    </span>
+  );
+};
+
 const schema = z.object({
   token: z.string().min(1, 'Enter a dispatch token'),
   slump_at_site_mm: z.string(),
@@ -131,10 +147,21 @@ export const GateScan: React.FC = () => {
             {row('Volume in truck', t?.volume_cum != null ? `${t.volume_cum} m³` : '—')}
             {row('Slump at plant', t?.slump_at_plant_mm != null ? `${t.slump_at_plant_mm} mm` : '—')}
             {row('Ordered', view.volume_ordered_cum != null ? `${view.volume_ordered_cum} m³` : '—')}
+            {row('In transit', transitValue(view))}
           </Card>
 
           {t?.status === 'FILLED' && (
             <Card className="qms-form-section">
+              {isPastWindow(view) && (
+                <div className="qms-alert-box" style={{ marginBottom: 12 }}>
+                  <XCircle size={18} />
+                  <div>
+                    This load is past the {view.placement_window_minutes}-minute concrete
+                    placement window. Scanning it in will <strong>auto-reject</strong> the
+                    delivery.
+                  </div>
+                </div>
+              )}
               <Input label="Slump at site (mm)" type="number" step="1" placeholder="Optional" {...register('slump_at_site_mm')} />
               <Button variant="primary" fullWidth disabled={busy} style={{ marginTop: 12 }}
                 onClick={() => run(() => dispatchesApi.gateArrive(pid, t.token, { slump_at_site_mm: num(getValues('slump_at_site_mm')) ?? null }))}>

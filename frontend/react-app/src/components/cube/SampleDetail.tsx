@@ -109,6 +109,9 @@ export const SampleDetail: React.FC<SampleDetailProps> = ({ sample, isQE, pid })
             {sample.lab_name
               ? <>Lab: <strong>{sample.lab_name}</strong></>
               : <span className="text-muted">No lab assigned — pick a lab when casting to dispatch reports.</span>}
+            {sample.lab_name && sample.cube_received_on && (
+              <> · received {fmtDate(sample.cube_received_on)}</>
+            )}
             {sample.lab_name && (
               sample.testing_started_on
                 ? <> · testing started {fmtDate(sample.testing_started_on)}</>
