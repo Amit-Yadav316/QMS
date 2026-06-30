@@ -9,9 +9,18 @@ these tests poke just outside those bounds. Valid same-day/in-window dates are
 covered by the existing phase-2/3/4 suites.
 """
 
-from tests.helpers import API, bearer, register_and_token, sample_project_payload
+import json
+
+from tests.helpers import (
+    API,
+    DEMO_PDF,
+    bearer,
+    register_and_token,
+    sample_project_payload,
+)
 from tests.integration.test_phase2_pour_flow import _pour_refs, _project_with_qe
 from tests.integration.test_phase4_cube_flow import (
+    _PDF,
     _cast_sample,
     _qe_pour,
     _report_token,
@@ -73,7 +82,8 @@ class TestMixDesignDateIntegrity:
         # project start is 2026-07-01 — a trial mix before that is impossible.
         resp = await client.post(
             f"{API}/external/mix-design?token={token}",
-            json={"grade_id": refs["grade_id"], "trial_mix_date": "2026-06-01"},
+            data={"payload": json.dumps({"grade_id": refs["grade_id"], "trial_mix_date": "2026-06-01"})},
+            files={"file": DEMO_PDF[1]},
         )
         assert resp.status_code == 400, resp.text
         assert "trial mix date" in resp.json()["detail"].lower()
@@ -132,6 +142,7 @@ class TestLabTimestampIntegrity:
         await _start(client, token, testing_started_on="2026-07-15")
         resp = await client.post(
             f"{API}/external/lab-report?token={token}",
+            files=_PDF,
             data={
                 "test_age_days": "7",
                 "observed_strength_mpa": "20",

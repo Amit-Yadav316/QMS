@@ -1,8 +1,13 @@
 """Shared helpers for the test suite — request builders and sample payloads."""
 
+import json
+
 from httpx import AsyncClient, Response
 
 from tests import mailbox
+
+# A tiny valid-looking PDF blob for the mandatory mix-design / lab-report uploads.
+DEMO_PDF = ("file", ("demo.pdf", b"%PDF-1.4 demo", "application/pdf"))
 
 API = "/api/v1"
 DEFAULT_PASSWORD = "Password123!"
@@ -110,7 +115,8 @@ async def approve_mix_design(
     submitted = (
         await client.post(
             f"{API}/external/mix-design?token={token}",
-            json={"grade_id": grade_id, **submit_fields},
+            data={"payload": json.dumps({"grade_id": grade_id, **submit_fields})},
+            files={"file": DEMO_PDF[1]},
         )
     ).json()
     await client.patch(

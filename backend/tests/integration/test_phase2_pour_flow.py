@@ -53,7 +53,7 @@ async def _pour_refs(client, db_session, contractor_token, qe_token, project_id)
     supplier = (
         await client.post(
             f"{API}/projects/{project_id}/suppliers",
-            json={"supplier_name": "UltraTech RMC"},
+            json={"supplier_name": "UltraTech RMC", "contact_email": "plant@ultratech.example"},
             headers=bearer(contractor_token),
         )
     ).json()
@@ -247,7 +247,7 @@ class TestPourTowerScope:
         supplier = (
             await client.post(
                 f"{API}/projects/{project_id}/suppliers",
-                json={"supplier_name": "UltraTech RMC"},
+                json={"supplier_name": "UltraTech RMC", "contact_email": "plant@ultratech.example"},
                 headers=bearer(contractor_token),
             )
         ).json()

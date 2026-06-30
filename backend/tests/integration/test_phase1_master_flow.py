@@ -258,7 +258,7 @@ class TestMixDesigns:
         )
         sup = await client.post(
             f"{API}/projects/{project_id}/suppliers",
-            json={"supplier_name": "UltraTech RMC"},
+            json={"supplier_name": "UltraTech RMC", "contact_email": "plant@ultratech.example"},
             headers=bearer(contractor_token),
         )
         supplier_id = sup.json()["supplier_id"]
@@ -317,6 +317,7 @@ class TestSupplierMixDesignDocument:
             f"{API}/projects/{project_id}/suppliers",
             json={
                 "supplier_name": "UltraTech RMC",
+                "contact_email": "plant@ultratech.example",
                 "mix_design_document_id": doc["document_id"],
             },
             headers=bearer(contractor_token),
@@ -330,7 +331,11 @@ class TestSupplierMixDesignDocument:
         _, contractor_token, project_id = await _contractor_on_project(client, db_session)
         resp = await client.post(
             f"{API}/projects/{project_id}/suppliers",
-            json={"supplier_name": "X RMC", "mix_design_document_id": 999999},
+            json={
+                "supplier_name": "X RMC",
+                "contact_email": "x@rmc.example",
+                "mix_design_document_id": 999999,
+            },
             headers=bearer(contractor_token),
         )
         assert resp.status_code == 404

@@ -126,7 +126,9 @@ class SupplierCreate(BaseModel):
     pan_number: str | None = None
     plant_distance_km: float | None = None
     transit_time_mins: int | None = None
-    contact_email: EmailStr | None = None
+    # Required: the RMC interacts only via tokenised email links (mix-design
+    # request, truck dispatch, result), so a contact email is mandatory.
+    contact_email: EmailStr
     contact_phone: str | None = None
     primary_contact_name: str | None = None
     primary_contact_designation: str | None = None
@@ -175,7 +177,9 @@ class LabCreate(BaseModel):
     address_line1: str | None = None
     city: str | None = None
     state: str | None = None
-    contact_email: EmailStr | None = None
+    # Required: the lab interacts only via tokenised email links, so we must be
+    # able to reach it.
+    contact_email: EmailStr
     contact_phone: str | None = None
     lab_manager_name: str | None = None
     alternate_phone: str | None = None
@@ -398,6 +402,7 @@ class MixDesignResponse(BaseModel):
     slump_range_mm: str | None = None
     trial_mix_date: date | None = None
     strength_28day_mpa: float | None = None
+    document_id: int | None = None
     # QE review outcome.
     approval_status: MixApprovalStatus | None = None
     rejection_reason: str | None = None

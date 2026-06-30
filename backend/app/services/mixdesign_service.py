@@ -9,6 +9,7 @@ through a tokenised public link, and the project's quality engineer reviews each
 
 import logging
 from datetime import UTC, datetime
+from pathlib import Path
 
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,10 +17,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.core.date_rules import ensure_not_after
 from app.core.email import send_mix_design_request_email
-from app.core.exceptions import NotFoundError, PermissionDeniedError
+from app.core.exceptions import (
+    FileTooLargeError,
+    NotFoundError,
+    PermissionDeniedError,
+    UnsupportedFileTypeError,
+)
 from app.core.security import create_invitation_token
+from app.core.storage import make_key, storage
 from app.models.auth import User
 from app.models.master import (
+    Document,
     Grade,
     MixApprovalStatus,
     MixDesign,
@@ -39,6 +47,8 @@ from app.schemas.master import (
 )
 
 logger = logging.getLogger(__name__)
+
+_MIX_PDF_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg"}
 
 
 async def _try_send_mix_request(**kwargs) -> None:
@@ -169,22 +179,32 @@ class MixDesignService:
             required_grades=await self._required_grades_info(supplier.supplier_id),
         )
 
-    async def submit(self, token: str, data: MixDesignSubmit) -> MixDesignResponse:
+    async def submit(
+        self,
+        token: str,
+        data: MixDesignSubmit,
+        *,
+        pdf_filename: str,
+        pdf_content: bytes,
+        pdf_content_type: str | None,
+    ) -> MixDesignResponse:
         supplier = await self._by_mix_token(token)
         if data.grade_id not in await self._required_grade_ids(supplier.supplier_id):
             raise PermissionDeniedError(
                 "This grade wasn't requested for your plant"
             )
-        project = (
-            await self.session.get(Project, supplier.project_id)
-            if supplier.project_id
-            else None
-        )
+        if not supplier.project_id:
+            raise NotFoundError("Project")
+        project = await self.session.get(Project, supplier.project_id)
         if project:
             ensure_not_after(
                 project.start_date, data.trial_mix_date,
                 earlier_label="project start date", later_label="trial mix date",
             )
+
+        document_id = await self._store_mix_pdf(
+            supplier.project_id, data, pdf_filename, pdf_content, pdf_content_type
+        )
 
         fields = data.model_dump(exclude={"grade_id"})
         md = await self.repo.get_by(
@@ -198,12 +218,14 @@ class MixDesignService:
                     grade_id=data.grade_id,
                     project_id=supplier.project_id,
                     approval_status=MixApprovalStatus.PENDING,
+                    document_id=document_id,
                     **fields,
                 )
             )
         else:
             for key, value in fields.items():
                 setattr(md, key, value)
+            md.document_id = document_id
             # A resubmission goes back to PENDING and clears the prior review.
             md.approval_status = MixApprovalStatus.PENDING
             md.rejection_reason = None
@@ -212,6 +234,36 @@ class MixDesignService:
             md.approved_by = None
             await self.session.flush()
         return await self._to_response(md)
+
+    async def _store_mix_pdf(
+        self,
+        project_id: int,
+        data: MixDesignSubmit,
+        filename: str,
+        content: bytes,
+        content_type: str | None,
+    ) -> int:
+        """Persist the mandatory mix-design PDF as a PENDING project document."""
+        ext = Path(filename).suffix.lower()
+        if ext not in _MIX_PDF_EXTENSIONS:
+            raise UnsupportedFileTypeError(ext or filename)
+        if len(content) > settings.MAX_UPLOAD_BYTES:
+            raise FileTooLargeError(settings.MAX_UPLOAD_BYTES)
+        key = make_key(project_id, filename)
+        storage.save(key, content)
+        doc = Document(
+            project_id=project_id,
+            document_type="MIX_DESIGN",
+            title=f"Mix design {data.mix_design_ref or ''}".strip(),
+            original_filename=filename,
+            stored_key=key,
+            content_type=content_type,
+            size_bytes=len(content),
+            uploaded_by=None,
+        )
+        self.session.add(doc)
+        await self.session.flush()
+        return doc.document_id
 
     # ── QE review ──────────────────────────────────────────────────────────────
 

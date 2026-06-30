@@ -110,7 +110,7 @@ class TestContractorSide:
         # Cannot manage contractor side until the project link is accepted.
         before = await client.post(
             f"{API}/projects/{project_id}/labs",
-            json={"lab_name": "Premature Lab", "lab_type": "THIRD_PARTY"},
+            json={"lab_name": "Premature Lab", "lab_type": "THIRD_PARTY", "contact_email": "premature@lab.example"},
             headers=bearer(ctr_token),
         )
         assert before.status_code == 403
@@ -127,7 +127,7 @@ class TestContractorSide:
         # Contractor admin registers a lab.
         lab = await client.post(
             f"{API}/projects/{project_id}/labs",
-            json={"lab_name": "QA Lab", "lab_type": "THIRD_PARTY"},
+            json={"lab_name": "QA Lab", "lab_type": "THIRD_PARTY", "contact_email": "qa@lab.example"},
             headers=bearer(ctr_token),
         )
         assert lab.status_code == 201, lab.text
@@ -154,7 +154,7 @@ class TestContractorSide:
         assert pm.status_code == 201, pm.text
         sup = await client.post(
             f"{API}/projects/{project_id}/suppliers",
-            json={"supplier_name": "RMC X"},
+            json={"supplier_name": "RMC X", "contact_email": "rmcx@rmc.example"},
             headers=bearer(lead_token),
         )
         assert sup.status_code == 201, sup.text
@@ -163,7 +163,7 @@ class TestContractorSide:
         owner_token, project_id = await _make_project(client)
         resp = await client.post(
             f"{API}/projects/{project_id}/suppliers",
-            json={"supplier_name": "X"},
+            json={"supplier_name": "X", "contact_email": "x@rmc.example"},
             headers=bearer(owner_token),
         )
         assert resp.status_code == 403

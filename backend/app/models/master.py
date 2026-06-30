@@ -486,6 +486,11 @@ class MixDesign(Base):
     observed_28day_strength_mpa: Mapped[float | None] = mapped_column(
         Numeric(6, 2), nullable=True
     )
+    # The mandatory mix-design PDF the RMC attaches at submission (a master.documents
+    # row, reviewed by the QE/PM like any document).
+    document_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("master.documents.document_id"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

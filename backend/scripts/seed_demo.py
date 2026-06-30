@@ -19,6 +19,7 @@ client already exists — wipe first with `uv run python scripts/wipe_db.py --ye
 """
 
 import asyncio
+import json
 import sys
 from datetime import UTC, datetime
 
@@ -264,6 +265,7 @@ async def _run_cube(c, qe_tok, pid, *, pour_id, grade_min, outcome, cast_date, t
             f"{API}/external/lab-report?token={token}",
             data={"test_age_days": "28", "test_date": test_date,
                   "observed_strength_mpa": str(observed)},
+            files={"file": ("lab-report.pdf", b"%PDF-1.4 demo report", "application/pdf")},
         ),
         "lab: submit 28-day report",
     )
@@ -426,7 +428,8 @@ async def seed() -> None:
                 submitted = _ok(
                     await c.post(
                         f"{API}/external/mix-design?token={token}",
-                        json={"grade_id": gid, "wc_ratio": 0.45},
+                        data={"payload": json.dumps({"grade_id": gid, "wc_ratio": 0.45})},
+                        files={"file": ("mix-design.pdf", b"%PDF-1.4 demo mix", "application/pdf")},
                     ),
                     "submit mix design",
                 ).json()

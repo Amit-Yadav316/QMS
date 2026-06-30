@@ -19,6 +19,9 @@ from app.models.transaction import CubeSample
 from tests.helpers import API, bearer
 from tests.integration.test_phase2_pour_flow import _pour_refs, _project_with_qe
 
+# The lab report PDF is mandatory on submission.
+_PDF = {"file": ("report.pdf", b"%PDF-1.4 demo", "application/pdf")}
+
 
 async def _qe_pour(client, db_session):
     """(contractor_token, qe_token, project_id, pour_id)."""
@@ -84,7 +87,11 @@ async def _record_test(
     }
     if test_date:
         form["test_date"] = test_date
-    resp = await client.post(f"{API}/external/lab-report?token={token}", data=form)
+    resp = await client.post(
+        f"{API}/external/lab-report?token={token}",
+        data=form,
+        files={"file": ("report.pdf", b"%PDF-1.4 report", "application/pdf")},
+    )
     if resp.status_code != 200:
         return resp
     samples = (
@@ -247,6 +254,7 @@ class TestLabReportFlow:
         r7 = await client.post(
             f"{API}/external/lab-report?token={token}",
             data={"test_age_days": "7", "observed_strength_mpa": "17.0"},
+            files=_PDF,
         )
         assert r7.status_code == 200, r7.text
         assert r7.json()["result_status"] == "FAIL"
@@ -256,6 +264,7 @@ class TestLabReportFlow:
         r28 = await client.post(
             f"{API}/external/lab-report?token={token}",
             data={"test_age_days": "28", "observed_strength_mpa": "27.0"},
+            files=_PDF,
         )
         assert r28.json()["ncr_raised"] is True
 
@@ -271,6 +280,7 @@ class TestLabReportFlow:
         resp = await client.post(
             f"{API}/external/lab-report?token={token}",
             data={"test_age_days": "7", "observed_strength_mpa": "20.0"},
+            files=_PDF,
         )
         assert resp.status_code == 400
 
@@ -283,9 +293,9 @@ class TestLabReportFlow:
             json={"testing_started_on": "2026-07-15"},
         )
         form = {"test_age_days": "28", "observed_strength_mpa": "32.0"}
-        first = await client.post(f"{API}/external/lab-report?token={token}", data=form)
+        first = await client.post(f"{API}/external/lab-report?token={token}", data=form, files=_PDF)
         assert first.status_code == 200
-        again = await client.post(f"{API}/external/lab-report?token={token}", data=form)
+        again = await client.post(f"{API}/external/lab-report?token={token}", data=form, files=_PDF)
         assert again.status_code == 400
 
     async def test_unknown_age_is_rejected(self, client, db_session):
@@ -299,6 +309,7 @@ class TestLabReportFlow:
         resp = await client.post(
             f"{API}/external/lab-report?token={token}",
             data={"test_age_days": "21", "observed_strength_mpa": "30.0"},
+            files=_PDF,
         )
         assert resp.status_code == 400
 

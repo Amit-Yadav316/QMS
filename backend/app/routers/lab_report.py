@@ -48,10 +48,10 @@ async def submit_lab_report(
     observed_strength_mpa: float = Form(...),
     test_date: date | None = Form(None),
     lab_report_reference: str | None = Form(None),
-    file: UploadFile | None = File(None),
+    file: UploadFile = File(...),  # the signed lab report PDF is mandatory
     db: AsyncSession = Depends(get_db),
 ):
-    pdf_content = await file.read() if file is not None else None
+    pdf_content = await file.read()
     data = LabReportSubmit(
         test_age_days=test_age_days,
         observed_strength_mpa=observed_strength_mpa,
@@ -61,7 +61,7 @@ async def submit_lab_report(
     return await CubeService(db).submit_report(
         token,
         data,
-        pdf_filename=file.filename if file is not None else None,
+        pdf_filename=file.filename,
         pdf_content=pdf_content,
-        pdf_content_type=file.content_type if file is not None else None,
+        pdf_content_type=file.content_type,
     )

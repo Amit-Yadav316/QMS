@@ -139,23 +139,18 @@ class TestDispatchCreation:
         resp = await _raise_dispatch(client, contractor_token, pid, refs)
         assert resp.status_code == 403
 
-    async def test_dispatch_requires_supplier_with_email(self, client, db_session):
-        contractor_token, qe_token, _, pid = await _project_with_qe_and_supervisor(
+    async def test_supplier_registration_requires_contact_email(self, client, db_session):
+        contractor_token, _, _, pid = await _project_with_qe_and_supervisor(
             client, db_session
         )
-        refs = await _dispatch_refs(client, contractor_token, qe_token, pid)
-        # A second supplier with no contact email can't be dispatched to.
-        no_email = (
-            await client.post(
-                f"{API}/projects/{pid}/suppliers",
-                json={"supplier_name": "ACC Plant"},
-                headers=bearer(contractor_token),
-            )
-        ).json()
-        resp = await _raise_dispatch(
-            client, qe_token, pid, {**refs, "supplier_id": no_email["supplier_id"]}
+        # A supplier interacts only via tokenised email links, so an email is
+        # mandatory at registration (422 without it).
+        resp = await client.post(
+            f"{API}/projects/{pid}/suppliers",
+            json={"supplier_name": "ACC Plant"},
+            headers=bearer(contractor_token),
         )
-        assert resp.status_code == 403
+        assert resp.status_code == 422
 
 
 class TestTruckFill:

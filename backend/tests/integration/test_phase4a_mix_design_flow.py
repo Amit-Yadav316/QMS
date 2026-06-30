@@ -7,7 +7,9 @@ Integration tests for Phase 4A — RMC-owned, QE-approved mix designs:
   APPROVED mix's grade may be poured.
 """
 
-from tests.helpers import API, bearer
+import json
+
+from tests.helpers import API, DEMO_PDF, bearer
 from tests.integration.test_phase2_pour_flow import _project_with_qe
 
 
@@ -15,7 +17,7 @@ async def _supplier(client, contractor_token, pid):
     return (
         await client.post(
             f"{API}/projects/{pid}/suppliers",
-            json={"supplier_name": "UltraTech RMC"},
+            json={"supplier_name": "UltraTech RMC", "contact_email": "plant@ultratech.example"},
             headers=bearer(contractor_token),
         )
     ).json()
@@ -43,7 +45,8 @@ async def _request_and_token(client, contractor_token, pid, supplier_id, grade_i
 async def _submit(client, token, grade_id, **fields):
     return await client.post(
         f"{API}/external/mix-design?token={token}",
-        json={"grade_id": grade_id, **fields},
+        data={"payload": json.dumps({"grade_id": grade_id, **fields})},
+        files={"file": DEMO_PDF[1]},
     )
 
 
