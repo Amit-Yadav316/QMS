@@ -30,6 +30,7 @@ class TruckStatus(str, enum.Enum):
     PENDING = "PENDING"
     FILLED = "FILLED"
     ARRIVED = "ARRIVED"
+    PENDING_QE = "PENDING_QE"  # supervisor admitted it; awaiting QE in-situ sign-off
     ACCEPTED = "ACCEPTED"
     REJECTED = "REJECTED"
 
@@ -39,6 +40,28 @@ class PourStatus(str, enum.Enum):
     IN_PROGRESS = "IN_PROGRESS"
     COMPLETED = "COMPLETED"
     CANCELLED = "CANCELLED"
+
+
+class ActionReason(str, enum.Enum):
+    GRADE_MISMATCH = "GRADE_MISMATCH"
+    SLUMP_MISMATCH = "SLUMP_MISMATCH"
+    VOLUME_MISMATCH = "VOLUME_MISMATCH"
+    OTHER = "OTHER"
+
+
+class ActionItemStatus(str, enum.Enum):
+    OPEN = "OPEN"
+    RESOLVED = "RESOLVED"
+
+
+class ActionResolution(str, enum.Enum):
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+
+
+class InsituResult(str, enum.Enum):
+    PASS = "PASS"
+    FAIL = "FAIL"
 
 
 class Pour(Base):
@@ -229,6 +252,84 @@ class PourDispatchLink(Base):
 
     pour: Mapped["Pour"] = relationship("Pour", back_populates="dispatch_links")
     dispatch: Mapped["RMCDispatch"] = relationship("RMCDispatch", back_populates="pour_links")
+
+
+class ActionItem(Base):
+    """A mismatch the site supervisor flags on a delivery for the QE to resolve.
+    Feeds the QE's action-required inbox; resolved when the QE accepts (after the
+    in-situ test) or rejects the delivery."""
+
+    __tablename__ = "action_items"
+    __table_args__ = (
+        Index("idx_action_items_project_status", "project_id", "status"),
+        Index("idx_action_items_dispatch", "dispatch_id"),
+        {"schema": "transaction"},
+    )
+
+    action_item_id: Mapped[int] = mapped_column(
+        BigInteger, primary_key=True, autoincrement=True
+    )
+    project_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("master.projects.project_id"), nullable=False
+    )
+    dispatch_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("transaction.rmc_dispatches.dispatch_id"), nullable=False
+    )
+    reason: Mapped[ActionReason] = mapped_column(
+        SAEnum(ActionReason, schema="transaction"), nullable=False
+    )
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[ActionItemStatus] = mapped_column(
+        SAEnum(ActionItemStatus, schema="transaction"),
+        nullable=False,
+        default=ActionItemStatus.OPEN,
+    )
+    resolution: Mapped[ActionResolution | None] = mapped_column(
+        SAEnum(ActionResolution, schema="transaction"), nullable=True
+    )
+    raised_by: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("auth.users.user_id"), nullable=True
+    )
+    resolved_by: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("auth.users.user_id"), nullable=True
+    )
+    resolved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class InsituTest(Base):
+    """The QE's in-situ slump-cone (workability) check on a delivery. Every truck
+    the supervisor admits is gated on this: a PASS lets the QE accept the load, a
+    FAIL is grounds to reject it. Target slump comes from the approved mix design."""
+
+    __tablename__ = "insitu_tests"
+    __table_args__ = (
+        Index("idx_insitu_dispatch", "dispatch_id"),
+        {"schema": "transaction"},
+    )
+
+    insitu_test_id: Mapped[int] = mapped_column(
+        BigInteger, primary_key=True, autoincrement=True
+    )
+    dispatch_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("transaction.rmc_dispatches.dispatch_id"), nullable=False
+    )
+    target_slump_mm: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    measured_slump_mm: Mapped[float] = mapped_column(Numeric(6, 1), nullable=False)
+    result: Mapped[InsituResult] = mapped_column(
+        SAEnum(InsituResult, schema="transaction"), nullable=False
+    )
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    tested_by: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("auth.users.user_id"), nullable=True
+    )
+    tested_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
 
 
 class CubeSample(Base):

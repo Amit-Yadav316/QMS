@@ -30,7 +30,15 @@ from app.models.quality import (
     NCREmbedding,
     Penalty,
 )
-from app.models.transaction import CubeSample, Pour, PourDispatchLink, RMCDispatch, TruckDispatch
+from app.models.transaction import (
+    ActionItem,
+    CubeSample,
+    InsituTest,
+    Pour,
+    PourDispatchLink,
+    RMCDispatch,
+    TruckDispatch,
+)
 
 __all__ = [
     "Organisation", "User", "ProjectTeam", "ProjectMember", "OrgInvitation",
@@ -39,6 +47,7 @@ __all__ = [
     "Grade", "GradeThreshold", "Supplier", "SupplierRequiredGrade", "MixDesign",
     "TestingLab", "Document",
     "Pour", "RMCDispatch", "TruckDispatch", "PourDispatchLink", "CubeSample",
+    "ActionItem", "InsituTest",
     "CubeTest", "NCR", "Penalty", "CorrectiveAction", "AISuggestion", "NCREmbedding",
     "AuditLog", "IngestionLog", "Embedding",
 ]

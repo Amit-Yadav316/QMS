@@ -216,14 +216,33 @@ class TestGate:
         )
         assert arrived.json()["truck"]["status"] == "ARRIVED"
 
-        accepted = await client.post(
+        # Supervisor admission is provisional — the truck waits for the QE.
+        provisional = await client.post(
             f"{API}/projects/{pid}/gate/{token}/accept", headers=bearer(sup_token)
+        )
+        assert provisional.status_code == 200, provisional.text
+        assert provisional.json()["truck"]["status"] == "PENDING_QE"
+
+        # Nothing is credited until the QE signs off the in-situ slump test.
+        dispatch = (
+            await client.get(
+                f"{API}/projects/{pid}/dispatches/{dispatch_id}",
+                headers=bearer(qe_token),
+            )
+        ).json()
+        assert dispatch["volume_received_cum"] in (None, 0, 0.0)
+
+        accepted = await client.post(
+            f"{API}/projects/{pid}/dispatches/{dispatch_id}/insitu",
+            json={"measured_slump_mm": 105, "decision": "APPROVED"},
+            headers=bearer(qe_token),
         )
         assert accepted.status_code == 200, accepted.text
         assert accepted.json()["truck"]["status"] == "ACCEPTED"
         assert accepted.json()["truck"]["accepted_at"] is not None
+        assert accepted.json()["insitu"]["result"] == "PASS"
 
-        # Volume accounting lands on the dispatch.
+        # Volume accounting lands on the dispatch only after QE acceptance.
         dispatch = (
             await client.get(
                 f"{API}/projects/{pid}/dispatches/{dispatch_id}",
@@ -233,7 +252,7 @@ class TestGate:
         assert dispatch["volume_received_cum"] == 6.0
         assert dispatch["volume_remaining_cum"] == 24.0
         assert dispatch["is_complete"] is False
-        assert dispatch["slump_at_site_mm"] == 110.0
+        assert dispatch["slump_at_site_mm"] == 105.0
 
     async def test_accept_before_arrive_is_rejected(self, client, db_session):
         contractor_token, qe_token, sup_token, pid = (
@@ -293,17 +312,23 @@ async def _pour_view(client, qe_token, pid, pour_id):
 
 
 async def _deliver(client, qe_token, sup_token, pid, refs, *, ordered, delivered):
-    """Order a truck, fill it, scan it in and accept it at the gate."""
+    """Order a truck, fill it, scan it in, supervisor-accept (→PENDING_QE), then
+    the QE signs off the in-situ slump test (→ACCEPTED + credited)."""
     created = (
         await _raise_dispatch(client, qe_token, pid, refs, volume_ordered=ordered)
     ).json()
-    token = created["truck"]["token"]
+    dispatch_id, token = created["dispatch_id"], created["truck"]["token"]
     await _fill_truck(client, token, volume_cum=delivered)
     await client.post(
         f"{API}/projects/{pid}/gate/{token}/arrive", json={}, headers=bearer(sup_token)
     )
     await client.post(
         f"{API}/projects/{pid}/gate/{token}/accept", headers=bearer(sup_token)
+    )
+    await client.post(
+        f"{API}/projects/{pid}/dispatches/{dispatch_id}/insitu",
+        json={"measured_slump_mm": 100, "decision": "APPROVED"},
+        headers=bearer(qe_token),
     )
     return token
 

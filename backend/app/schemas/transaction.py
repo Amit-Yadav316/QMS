@@ -13,7 +13,14 @@ from datetime import date, datetime
 
 from pydantic import BaseModel
 
-from app.models.transaction import PourStatus, TruckStatus
+from app.models.transaction import (
+    ActionItemStatus,
+    ActionReason,
+    ActionResolution,
+    InsituResult,
+    PourStatus,
+    TruckStatus,
+)
 
 
 class PourCreate(BaseModel):
@@ -155,6 +162,9 @@ class GateTruckView(BaseModel):
     dispatch_time: datetime | None = None
     transit_minutes: int | None = None
     placement_window_minutes: int | None = None
+    # QE in-situ slump check (Phase 4B): the latest test on this delivery, if any.
+    target_slump_mm: str | None = None
+    insitu: "InsituTestInfo | None" = None
     truck: TruckInfo
 
 
@@ -164,3 +174,65 @@ class TruckArrive(BaseModel):
 
 class TruckReject(BaseModel):
     rejection_reason: str
+
+
+# ── Phase 4B: mismatch action items + QE in-situ slump gate ──────────────────
+
+
+class ActionRequired(BaseModel):
+    """Supervisor flags a mismatch on an admitted delivery for the QE."""
+
+    reason: ActionReason
+    message: str
+
+
+class ActionItemResponse(BaseModel):
+    action_item_id: int
+    project_id: int
+    dispatch_id: int
+    reason: ActionReason
+    message: str
+    status: ActionItemStatus
+    resolution: ActionResolution | None
+    created_at: datetime
+    resolved_at: datetime | None
+
+
+class InsituSubmit(BaseModel):
+    """The QE's in-situ slump-cone test + decision on a PENDING_QE delivery."""
+
+    measured_slump_mm: float
+    decision: ActionResolution  # APPROVED → accept the load, REJECTED → reject it
+    rejection_reason: str | None = None
+    notes: str | None = None
+
+
+class InsituTestInfo(BaseModel):
+    measured_slump_mm: float
+    target_slump_mm: str | None
+    result: InsituResult
+    notes: str | None
+    tested_at: datetime
+
+
+class QEReviewItem(BaseModel):
+    """One delivery awaiting the QE's in-situ sign-off (the QE inbox)."""
+
+    dispatch_id: int
+    token: str
+    supplier_name: str | None = None
+    grade_name: str | None = None
+    target_slump_mm: str | None = None
+    slump_at_site_mm: float | None = None
+    volume_cum: float | None = None
+    pour_reference: str | None = None
+    action_item: ActionItemResponse | None = None
+    created_at: datetime
+
+
+class QEInboxCount(BaseModel):
+    count: int
+
+
+# GateTruckView forward-references InsituTestInfo (defined above) — resolve it.
+GateTruckView.model_rebuild()

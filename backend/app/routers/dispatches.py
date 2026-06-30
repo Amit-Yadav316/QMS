@@ -19,9 +19,13 @@ from app.database.session import get_db
 from app.models.auth import User, UserRole
 from app.models.master import Project
 from app.schemas.transaction import (
+    ActionRequired,
     DispatchCreate,
     DispatchResponse,
     GateTruckView,
+    InsituSubmit,
+    QEInboxCount,
+    QEReviewItem,
     TruckArrive,
     TruckReject,
 )
@@ -138,3 +142,60 @@ async def gate_reject(
 ):
     _ensure_supervisor(current_user)
     return await DispatchService(db).reject(project, token, current_user, data)
+
+
+@router.post(
+    "/{project_id}/gate/{token}/action-required", response_model=GateTruckView
+)
+async def gate_action_required(
+    token: str,
+    data: ActionRequired,
+    project: Project = Depends(require_project),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Supervisor flags a mismatch on an admitted truck → the QE's inbox."""
+    _ensure_supervisor(current_user)
+    return await DispatchService(db).raise_action(project, token, data, current_user)
+
+
+# ── QE inbox + in-situ slump sign-off ────────────────────────────────────────
+
+
+@router.get("/{project_id}/qe-inbox", response_model=list[QEReviewItem])
+async def qe_inbox(
+    project: Project = Depends(require_project),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Deliveries awaiting the QE's in-situ sign-off (PENDING_QE)."""
+    _ensure_quality_engineer(current_user)
+    return await DispatchService(db).qe_inbox(project)
+
+
+@router.get("/{project_id}/qe-inbox/count", response_model=QEInboxCount)
+async def qe_inbox_count(
+    project: Project = Depends(require_project),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    _ensure_quality_engineer(current_user)
+    return QEInboxCount(count=await DispatchService(db).qe_inbox_count(project))
+
+
+@router.post(
+    "/{project_id}/dispatches/{dispatch_id}/insitu", response_model=GateTruckView
+)
+async def record_insitu(
+    dispatch_id: int,
+    data: InsituSubmit,
+    project: Project = Depends(require_project),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """QE records the in-situ slump test + decision; APPROVE accepts + credits the
+    pour (slump must pass), REJECT notifies the RMC."""
+    _ensure_quality_engineer(current_user)
+    return await DispatchService(db).record_insitu(
+        project, dispatch_id, data, current_user
+    )
