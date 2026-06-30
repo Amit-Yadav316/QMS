@@ -8,6 +8,8 @@ export type DocumentCategory =
   | 'CUBE_TEST_REGISTER'
   | 'OTHER';
 
+export type DocumentApprovalStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+
 export interface DocumentResponse {
   document_id: number;
   project_id: number;
@@ -18,5 +20,14 @@ export interface DocumentResponse {
   size_bytes: number;
   uploaded_by: number | null;
   uploaded_by_name: string | null;
+  approval_status: DocumentApprovalStatus;
+  rejection_reason: string | null;
+  reviewed_by: number | null;
+  reviewed_at: string | null;
   uploaded_at: string;
+}
+
+export interface DocumentReview {
+  approval_status: DocumentApprovalStatus;
+  rejection_reason?: string | null;
 }

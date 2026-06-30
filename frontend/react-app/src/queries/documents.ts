@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { documentsApi } from '../api/documents';
-import type { DocumentResponse } from '../types/master';
+import type { DocumentResponse, DocumentReview } from '../types/master';
 
 export const documentKeys = { list: (pid: number) => ['documents', pid] as const };
 
@@ -20,6 +20,15 @@ export const useDeleteDocument = (pid: number) => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (documentId: number) => documentsApi.remove(pid, documentId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: documentKeys.list(pid) }),
+  });
+};
+
+export const useReviewDocument = (pid: number) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { documentId: number; data: DocumentReview }) =>
+      documentsApi.review(pid, vars.documentId, vars.data),
     onSuccess: () => qc.invalidateQueries({ queryKey: documentKeys.list(pid) }),
   });
 };

@@ -7,7 +7,7 @@
 // attached) and saves it client-side.
 
 import { api } from './client';
-import type { DocumentResponse } from '../types/master';
+import type { DocumentResponse, DocumentReview } from '../types/master';
 
 export const documentsApi = {
   list(projectId: number): Promise<DocumentResponse[]> {
@@ -49,5 +49,16 @@ export const documentsApi = {
     return api
       .delete(`/projects/${projectId}/documents/${documentId}`)
       .then(() => undefined);
+  },
+
+  // QE / PM approves or rejects a document.
+  review(
+    projectId: number,
+    documentId: number,
+    data: DocumentReview,
+  ): Promise<DocumentResponse> {
+    return api
+      .patch<DocumentResponse>(`/projects/${projectId}/documents/${documentId}/review`, data)
+      .then((r) => r.data);
   },
 };
