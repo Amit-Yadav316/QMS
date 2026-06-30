@@ -56,11 +56,11 @@ backend/
 | Schema | Contents |
 |--------|----------|
 | `auth` | organisations, users, project_team, org_invitations, token_blacklist |
-| `master` | projects, towers, floors, components, grades, suppliers, mix_designs, testing_labs |
-| `master` (cont.) | + documents (per-project file store) |
-| `transaction` | pours, rmc_dispatches, truck_dispatches, pour_dispatch_links, cube_samples |
+| `master` | projects, towers, floors, components, grades, suppliers, supplier_required_grades, mix_designs, testing_labs |
+| `master` (cont.) | + documents (per-project file store, QE/PM-reviewed) |
+| `transaction` | pours, rmc_dispatches, truck_dispatches, pour_dispatch_links, cube_samples, action_items, insitu_tests |
 | `quality` | cube_tests, ncrs, penalties, corrective_actions, ai_suggestions, ncr_embeddings |
-| `audit` | audit_logs, ingestion_logs, embeddings |
+| `audit` | ingestion_logs, embeddings |
 
 ## Setup
 
