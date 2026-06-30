@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.core import quality_engine
+from app.core.date_rules import ensure_not_after
 from app.core.email import send_lab_report_request_email
 from app.core.exceptions import (
     LabReportStateError,
@@ -102,6 +103,20 @@ class CubeService:
         if not pour:
             raise NotFoundError("Pour")
         await self._validate_lab(data.lab_id, project.project_id)
+
+        # Timeline: cubes are cast from the pour, then dispatched to the lab.
+        ensure_not_after(
+            pour.pour_date, data.cast_date,
+            earlier_label="pour date", later_label="cast date",
+        )
+        ensure_not_after(
+            data.cast_date, data.lab_dispatch_date,
+            earlier_label="cast date", later_label="lab dispatch date",
+        )
+        ensure_not_after(
+            data.lab_dispatch_date or data.cast_date, data.expected_result_date,
+            earlier_label="lab dispatch date", later_label="expected result date",
+        )
 
         sample = await self.samples.add(
             CubeSample(
@@ -215,6 +230,7 @@ class CubeService:
             pour_reference=pour.pour_reference if pour else None,
             cast_date=sample.cast_date,
             no_of_cubes=sample.no_of_cubes,
+            cube_received_on=sample.cube_received_on,
             testing_started_on=sample.testing_started_on,
             milestones=milestones,
         )
@@ -222,6 +238,21 @@ class CubeService:
     async def start_testing(self, token: str, data: LabReportStart) -> LabReportView:
         """The lab establishes the testing day — anchors the milestone schedule."""
         sample = await self._sample_by_report_token(token)
+        # Timeline: cubes are cast, received at the lab, then testing starts.
+        ensure_not_after(
+            sample.cast_date, data.cube_received_on,
+            earlier_label="cast date", later_label="cube received date",
+        )
+        ensure_not_after(
+            data.cube_received_on, data.testing_started_on,
+            earlier_label="cube received date", later_label="testing start date",
+        )
+        ensure_not_after(
+            sample.cast_date, data.testing_started_on,
+            earlier_label="cast date", later_label="testing start date",
+        )
+        if data.cube_received_on is not None:
+            sample.cube_received_on = data.cube_received_on
         sample.testing_started_on = data.testing_started_on
         await self.session.flush()
         return await self.get_report_view(token)
@@ -262,6 +293,11 @@ class CubeService:
             threshold,
         )
         result = quality_engine.classify(data.observed_strength_mpa, required)
+        # A reported test can't predate the day testing started.
+        ensure_not_after(
+            sample.testing_started_on, data.test_date,
+            earlier_label="testing start date", later_label="test date",
+        )
         test_date = data.test_date or (
             sample.testing_started_on + timedelta(days=data.test_age_days)
         )
@@ -480,6 +516,7 @@ class CubeService:
             expected_result_date=sample.expected_result_date,
             lab_dispatch_notes=sample.lab_dispatch_notes,
             report_link_sent=sample.report_token_sent_at is not None,
+            cube_received_on=sample.cube_received_on,
             testing_started_on=sample.testing_started_on,
             created_at=sample.created_at,
             pour_reference=pour.pour_reference if pour else None,

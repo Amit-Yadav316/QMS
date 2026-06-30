@@ -9,6 +9,7 @@ member of.
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.date_rules import ensure_not_after
 from app.core.project_access import (
     can_manage_client_side,
     can_manage_contractor_side,
@@ -39,6 +40,10 @@ class ProjectService:
         project = Project(
             org_id=user.org_id,
             **data.model_dump(exclude={"towers"}),
+        )
+        ensure_not_after(
+            project.start_date, project.end_date,
+            earlier_label="project start date", later_label="project end date",
         )
         project = await self.repo.add(project)
 

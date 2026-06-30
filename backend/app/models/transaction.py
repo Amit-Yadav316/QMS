@@ -269,6 +269,9 @@ class CubeSample(Base):
     report_token_sent_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # When the lab physically received the cubes — a distinct point on the
+    # timeline between casting and the testing day it then establishes.
+    cube_received_on: Mapped[date | None] = mapped_column(Date, nullable=True)
     testing_started_on: Mapped[date | None] = mapped_column(Date, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

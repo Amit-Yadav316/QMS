@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.date_rules import ensure_not_after
 from app.core.exceptions import (
     GradeNotApprovedError,
     NotFoundError,
@@ -73,6 +74,16 @@ class PourService:
             md = await self.session.get(MixDesign, data.mix_design_id)
             if not md or md.project_id != pid:
                 raise NotFoundError("Mix design")
+
+        # A pour can't be dated before the project starts or after it ends.
+        ensure_not_after(
+            project.start_date, data.pour_date,
+            earlier_label="project start date", later_label="pour date",
+        )
+        ensure_not_after(
+            data.pour_date, project.end_date,
+            earlier_label="pour date", later_label="project end date",
+        )
 
         pour = await self.repo.add(
             Pour(

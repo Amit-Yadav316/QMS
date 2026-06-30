@@ -85,6 +85,7 @@ class CubeSampleResponse(BaseModel):
     # Lab report token flow: whether the report link has been emailed, and the
     # testing day the lab established (anchors the 7/14/28-day schedule).
     report_link_sent: bool = False
+    cube_received_on: date | None = None
     testing_started_on: date | None = None
     created_at: datetime
     # Denormalised pour context for the cube-results table.

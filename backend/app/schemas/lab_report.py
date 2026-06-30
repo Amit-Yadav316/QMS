@@ -48,15 +48,18 @@ class LabReportView(BaseModel):
     pour_reference: str | None = None
     cast_date: date | None = None
     no_of_cubes: int | None = None
+    cube_received_on: date | None = None
     testing_started_on: date | None = None
     is_expired: bool = False
     milestones: list[LabReportMilestone] = []
 
 
 class LabReportStart(BaseModel):
-    """First action: the lab fixes the day testing/curing started."""
+    """First action: the lab fixes the day testing/curing started, and
+    optionally records when it received the cubes."""
 
     testing_started_on: date
+    cube_received_on: date | None = None
 
 
 class LabReportSubmit(BaseModel):

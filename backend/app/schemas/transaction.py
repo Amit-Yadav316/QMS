@@ -149,6 +149,12 @@ class GateTruckView(BaseModel):
     grade_name: str | None = None
     volume_ordered_cum: float | None = None
     slump_at_site_mm: float | None = None
+    # Concrete placement window: how long the load has been in transit
+    # (dispatch → now/arrival) against the IS-456 90-minute limit. A truck that
+    # arrives past the window is auto-rejected at the gate scan.
+    dispatch_time: datetime | None = None
+    transit_minutes: int | None = None
+    placement_window_minutes: int | None = None
     truck: TruckInfo
 
 

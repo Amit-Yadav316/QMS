@@ -49,6 +49,11 @@ logger = logging.getLogger(__name__)
 
 TOKEN_TTL_HOURS = 24
 
+# IS-456 concrete placement window: ready-mix concrete should be placed within
+# 90 minutes of batching/dispatch, before it starts its initial set. A truck that
+# reaches the gate past this window is auto-rejected at the arrival scan.
+PLACEMENT_WINDOW_MINUTES = 90
+
 
 async def _try_send(send, *, link: str, recipient: str, **kwargs) -> None:
     """Best-effort email — an SMTP/template failure must not fail the request.
@@ -232,10 +237,26 @@ class DispatchService:
             raise TruckStateError(
                 "Only a truck filled by the supplier can be scanned in at the gate"
             )
-        truck.status = TruckStatus.ARRIVED
-        truck.arrived_at = datetime.now(UTC)
+        now = datetime.now(UTC)
+        truck.arrived_at = now
         if data.slump_at_site_mm is not None:
             dispatch.slump_at_site_mm = data.slump_at_site_mm
+
+        # 90-minute concrete placement window: a load that took longer than the
+        # window from dispatch to the gate has likely begun setting and is
+        # auto-rejected — the supervisor never gets to accept it.
+        transit = self._transit_minutes(dispatch.dispatch_time, now)
+        if transit is not None and transit > PLACEMENT_WINDOW_MINUTES:
+            truck.status = TruckStatus.REJECTED
+            truck.rejection_reason = (
+                f"Auto-rejected: {transit} min from dispatch to gate exceeds the "
+                f"{PLACEMENT_WINDOW_MINUTES}-minute concrete placement window."
+            )
+            await self.session.flush()
+            await self._notify_result(project, dispatch, truck, "REJECTED")
+            return await self._gate_view(project, dispatch, truck)
+
+        truck.status = TruckStatus.ARRIVED
         await self.session.flush()
         return await self._gate_view(project, dispatch, truck)
 
@@ -302,6 +323,18 @@ class DispatchService:
     @staticmethod
     def _expired(truck: TruckDispatch) -> bool:
         return truck.expires_at < datetime.now(UTC)
+
+    @staticmethod
+    def _transit_minutes(
+        dispatch_time: datetime | None, reference: datetime
+    ) -> int | None:
+        """Whole minutes from dispatch to ``reference`` (arrival or now). ``None``
+        when the load hasn't been dispatched yet (no batching time recorded)."""
+        if dispatch_time is None:
+            return None
+        if dispatch_time.tzinfo is None:
+            dispatch_time = dispatch_time.replace(tzinfo=UTC)
+        return max(int((reference - dispatch_time).total_seconds() // 60), 0)
 
     async def _truck_by_token(self, token: str) -> TruckDispatch:
         truck = await self.trucks.get_by_token(token)
@@ -396,6 +429,7 @@ class DispatchService:
     ) -> GateTruckView:
         supplier = await self.session.get(Supplier, dispatch.supplier_id)
         grade = await self.session.get(Grade, dispatch.grade_id)
+        reference = truck.arrived_at or datetime.now(UTC)
         return GateTruckView(
             dispatch_id=dispatch.dispatch_id,
             project_name=project.project_name,
@@ -403,5 +437,8 @@ class DispatchService:
             grade_name=grade.grade_name if grade else None,
             volume_ordered_cum=dispatch.volume_ordered_cum,
             slump_at_site_mm=dispatch.slump_at_site_mm,
+            dispatch_time=dispatch.dispatch_time,
+            transit_minutes=self._transit_minutes(dispatch.dispatch_time, reference),
+            placement_window_minutes=PLACEMENT_WINDOW_MINUTES,
             truck=self._truck_info(truck),
         )
