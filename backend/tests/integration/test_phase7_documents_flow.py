@@ -114,3 +114,52 @@ class TestDocumentStore:
             headers=bearer(contractor_token),
         )
         assert ok.status_code == 204
+
+
+class TestDocumentReview:
+    """A QE or PM approves / rejects each uploaded document (PENDING on upload)."""
+
+    async def _upload(self, client, token, pid):
+        return (
+            await client.post(
+                f"{API}/projects/{pid}/documents",
+                files=_file(),
+                data={"document_type": "MIX_DESIGN"},
+                headers=bearer(token),
+            )
+        ).json()
+
+    async def test_pending_on_upload_then_qe_approves(self, client, db_session):
+        contractor_token, qe_token, pid = await _project_with_qe(client, db_session)
+        doc = await self._upload(client, contractor_token, pid)
+        assert doc["approval_status"] == "PENDING"
+
+        rev = await client.patch(
+            f"{API}/projects/{pid}/documents/{doc['document_id']}/review",
+            json={"approval_status": "APPROVED"},
+            headers=bearer(qe_token),
+        )
+        assert rev.status_code == 200, rev.text
+        assert rev.json()["approval_status"] == "APPROVED"
+        assert rev.json()["reviewed_by"] is not None
+
+    async def test_reject_records_reason(self, client, db_session):
+        contractor_token, qe_token, pid = await _project_with_qe(client, db_session)
+        doc = await self._upload(client, contractor_token, pid)
+        rev = await client.patch(
+            f"{API}/projects/{pid}/documents/{doc['document_id']}/review",
+            json={"approval_status": "REJECTED", "rejection_reason": "Wrong revision"},
+            headers=bearer(qe_token),
+        )
+        assert rev.json()["approval_status"] == "REJECTED"
+        assert rev.json()["rejection_reason"] == "Wrong revision"
+
+    async def test_non_qe_or_pm_cannot_review(self, client, db_session):
+        contractor_token, qe_token, pid = await _project_with_qe(client, db_session)
+        doc = await self._upload(client, contractor_token, pid)
+        rev = await client.patch(
+            f"{API}/projects/{pid}/documents/{doc['document_id']}/review",
+            json={"approval_status": "APPROVED"},
+            headers=bearer(contractor_token),
+        )
+        assert rev.status_code == 403
