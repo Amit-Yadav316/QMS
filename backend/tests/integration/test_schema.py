@@ -38,7 +38,6 @@ EXPECTED_TABLES = [
     ("quality", "corrective_actions"),
     ("quality", "ai_suggestions"),
     # audit
-    ("audit", "audit_logs"),
     ("audit", "ingestion_logs"),
     ("audit", "embeddings"),
 ]

@@ -1,4 +1,4 @@
-from app.models.audit import AuditLog, Embedding, IngestionLog
+from app.models.audit import Embedding, IngestionLog
 from app.models.auth import (
     EmailOtp,
     Organisation,
@@ -49,5 +49,5 @@ __all__ = [
     "Pour", "RMCDispatch", "TruckDispatch", "PourDispatchLink", "CubeSample",
     "ActionItem", "InsituTest",
     "CubeTest", "NCR", "Penalty", "CorrectiveAction", "AISuggestion", "NCREmbedding",
-    "AuditLog", "IngestionLog", "Embedding",
+    "IngestionLog", "Embedding",
 ]

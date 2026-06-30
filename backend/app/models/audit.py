@@ -1,5 +1,5 @@
 """
-audit.py — Append-only logs
+audit.py — Append-only logs (document ingestion + RAG embeddings)
 Schema: audit
 
 Nothing in this schema is ever updated or deleted.
@@ -16,43 +16,12 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.database.base import Base
 
 
-class AuditAction(str, enum.Enum):
-    CREATE = "CREATE"
-    UPDATE = "UPDATE"
-    DELETE = "DELETE"
-
-
 class DocumentType(str, enum.Enum):
     MIX_DESIGN = "MIX_DESIGN"
     RMC_DETAIL = "RMC_DETAIL"
     POUR_RECORD = "POUR_RECORD"
     GRADE_DETAIL = "GRADE_DETAIL"
     CUBE_TEST_REGISTER = "CUBE_TEST_REGISTER"
-
-
-class AuditLog(Base):
-    """
-    Written from audit_service.py after every mutation.
-    Replaces PostgreSQL trigger — gives us HTTP request context
-    (user ID, IP) that a DB trigger cannot see.
-    """
-    __tablename__ = "audit_logs"
-    __table_args__ = {"schema": "audit"}
-
-    log_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    user_id: Mapped[int | None] = mapped_column(
-        BigInteger, ForeignKey("auth.users.user_id"), nullable=True
-    )
-    action: Mapped[AuditAction] = mapped_column(
-        SAEnum(AuditAction, schema="audit"), nullable=False
-    )
-    table_name: Mapped[str] = mapped_column(String(100), nullable=False)
-    record_id: Mapped[str] = mapped_column(String(50), nullable=False)
-    old_values_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    new_values_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    logged_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
 
 
 class IngestionLog(Base):
