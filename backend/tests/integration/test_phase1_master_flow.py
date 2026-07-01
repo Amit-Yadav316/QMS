@@ -14,6 +14,7 @@ from app.models.master import Supplier, Tower
 from tests.helpers import (
     API,
     accept_and_verify,
+    approve_mix_design,
     bearer,
     register_and_token,
     sample_project_payload,
@@ -246,11 +247,18 @@ class TestSupplierConfirmation:
 
 
 class TestMixDesigns:
-    async def test_create_and_list(self, client, db_session):
-        _, contractor_token, project_id = await _contractor_on_project(client, db_session)
+    """Mix designs are RMC-owned now: contractor requests grades → RMC submits via
+    its token link → QE approves. See test_phase4a_mix_design_flow for full coverage."""
+
+    async def test_rmc_submits_and_qe_approves_then_lists(self, client, db_session):
+        from tests.integration.test_phase2_pour_flow import _project_with_qe
+
+        contractor_token, qe_token, project_id = await _project_with_qe(
+            client, db_session
+        )
         sup = await client.post(
             f"{API}/projects/{project_id}/suppliers",
-            json={"supplier_name": "UltraTech RMC"},
+            json={"supplier_name": "UltraTech RMC", "contact_email": "plant@ultratech.example"},
             headers=bearer(contractor_token),
         )
         supplier_id = sup.json()["supplier_id"]
@@ -259,34 +267,75 @@ class TestMixDesigns:
         ).json()
         m30 = next(g for g in grades if g["grade_name"] == "M30")
 
-        md = await client.post(
-            f"{API}/projects/{project_id}/mix-designs",
-            json={
-                "supplier_id": supplier_id,
-                "grade_id": m30["grade_id"],
-                "wc_ratio": 0.42,
-                "approval_status": "APPROVED",
-            },
-            headers=bearer(contractor_token),
+        await approve_mix_design(
+            client,
+            contractor_token=contractor_token,
+            qe_token=qe_token,
+            project_id=project_id,
+            supplier_id=supplier_id,
+            grade_id=m30["grade_id"],
         )
-        assert md.status_code == 201, md.text
-        body = md.json()
-        assert body["grade_name"] == "M30"
-        assert body["supplier_name"] == "UltraTech RMC"
 
         listed = await client.get(
             f"{API}/projects/{project_id}/mix-designs", headers=bearer(contractor_token)
         )
-        assert len(listed.json()) == 1
+        body = listed.json()
+        assert len(body) == 1
+        assert body[0]["grade_name"] == "M30"
+        assert body[0]["supplier_name"] == "UltraTech RMC"
+        assert body[0]["approval_status"] == "APPROVED"
 
-    async def test_rejects_supplier_from_other_project(self, client, db_session):
+    async def test_required_grades_rejects_supplier_from_other_project(
+        self, client, db_session
+    ):
         _, contractor_token, project_id = await _contractor_on_project(client, db_session)
         grades = (
             await client.get(f"{API}/grades", headers=bearer(contractor_token))
         ).json()
-        md = await client.post(
-            f"{API}/projects/{project_id}/mix-designs",
-            json={"supplier_id": 999999, "grade_id": grades[0]["grade_id"]},
+        resp = await client.put(
+            f"{API}/projects/{project_id}/suppliers/999999/required-grades",
+            json={"grade_ids": [grades[0]["grade_id"]]},
             headers=bearer(contractor_token),
         )
-        assert md.status_code == 404
+        assert resp.status_code == 404
+
+
+class TestSupplierMixDesignDocument:
+    """A supplier can link a mix-design PDF from the project document store."""
+
+    async def test_supplier_links_project_document(self, client, db_session):
+        _, contractor_token, project_id = await _contractor_on_project(client, db_session)
+        doc = (
+            await client.post(
+                f"{API}/projects/{project_id}/documents",
+                files={"file": ("mix.pdf", b"%PDF-1.4 mix", "application/pdf")},
+                data={"title": "M30 Mix Design"},
+                headers=bearer(contractor_token),
+            )
+        ).json()
+        resp = await client.post(
+            f"{API}/projects/{project_id}/suppliers",
+            json={
+                "supplier_name": "UltraTech RMC",
+                "contact_email": "plant@ultratech.example",
+                "mix_design_document_id": doc["document_id"],
+            },
+            headers=bearer(contractor_token),
+        )
+        assert resp.status_code == 201, resp.text
+        body = resp.json()
+        assert body["mix_design_document_id"] == doc["document_id"]
+        assert body["mix_design_document_name"] == "M30 Mix Design"
+
+    async def test_unknown_document_is_rejected(self, client, db_session):
+        _, contractor_token, project_id = await _contractor_on_project(client, db_session)
+        resp = await client.post(
+            f"{API}/projects/{project_id}/suppliers",
+            json={
+                "supplier_name": "X RMC",
+                "contact_email": "x@rmc.example",
+                "mix_design_document_id": 999999,
+            },
+            headers=bearer(contractor_token),
+        )
+        assert resp.status_code == 404

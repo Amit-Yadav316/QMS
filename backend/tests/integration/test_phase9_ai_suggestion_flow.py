@@ -81,13 +81,15 @@ def ai_stub():
 # ── Setup helpers ─────────────────────────────────────────────────────────────
 
 
-async def _new_failing_ncr(client, qe_token, pid, pour_id, ref, observed=27.0):
-    """Cast a fresh sample + record a failing test → return its auto-raised NCR id."""
+async def _new_failing_ncr(client, db_session, qe_token, pid, pour_id, ref, observed=27.0):
+    """Cast a fresh sample + a failing 28-day report → return its auto-raised NCR id."""
     sample_id = (
         await _cast_sample(client, qe_token, pid, pour_id, sample_reference=ref)
     ).json()["sample_id"]
     test = (
-        await _record_test(client, qe_token, pid, sample_id, observed_strength_mpa=observed)
+        await _record_test(
+            client, db_session, qe_token, pid, sample_id, observed_strength_mpa=observed
+        )
     ).json()
     return test["ncr_id"]
 
@@ -114,12 +116,12 @@ async def _project_with_corpus(client, db_session):
     """(contractor_token, qe_token, pid, pour_id, new_ncr_id) — one CLOSED NCR in
     the corpus plus a fresh OPEN NCR awaiting a suggestion."""
     contractor_token, qe_token, pid, pour_id = await _qe_pour(client, db_session)
-    past = await _new_failing_ncr(client, qe_token, pid, pour_id, "CS-PAST")
+    past = await _new_failing_ncr(client, db_session, qe_token, pid, pour_id, "CS-PAST")
     await _close_with_resolution(
         client, qe_token, pid, past,
         "Low cement content; plant batching calibration drift.",
     )
-    new_ncr = await _new_failing_ncr(client, qe_token, pid, pour_id, "CS-NEW")
+    new_ncr = await _new_failing_ncr(client, db_session, qe_token, pid, pour_id, "CS-NEW")
     return contractor_token, qe_token, pid, pour_id, new_ncr
 
 
@@ -159,7 +161,7 @@ class TestGenerate:
     async def test_cold_start_without_corpus_is_low_confidence(self, client, db_session):
         # A project whose only NCR is the one we're asking about → no corpus.
         _, qe_token, pid, pour_id = await _qe_pour(client, db_session)
-        ncr_id = await _new_failing_ncr(client, qe_token, pid, pour_id, "CS-ONLY")
+        ncr_id = await _new_failing_ncr(client, db_session, qe_token, pid, pour_id, "CS-ONLY")
         resp = await _gen(client, qe_token, pid, ncr_id)
         assert resp.status_code == 200, resp.text
         body = resp.json()
@@ -172,7 +174,7 @@ class TestGenerate:
         _, qe_token, pid, pour_id = await _qe_pour(client, db_session)
         # M30 required 30.0; observed 20.0 < 85% → CRITICAL_FAILURE.
         ncr_id = await _new_failing_ncr(
-            client, qe_token, pid, pour_id, "CS-CRIT", observed=20.0
+            client, db_session, qe_token, pid, pour_id, "CS-CRIT", observed=20.0
         )
         ai_stub["llm"] = ScriptedLLM([
             LLMReply(content='{"root_cause": "x", "corrective_actions": [], "ndt_recommended": false}')

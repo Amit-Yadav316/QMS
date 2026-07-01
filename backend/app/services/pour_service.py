@@ -10,7 +10,9 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.date_rules import ensure_not_after
 from app.core.exceptions import (
+    GradeNotApprovedError,
     NotFoundError,
     PermissionDeniedError,
     PourAlreadyCompletedError,
@@ -20,6 +22,7 @@ from app.models.master import (
     Component,
     Floor,
     Grade,
+    MixApprovalStatus,
     MixDesign,
     Project,
     ProjectContractor,
@@ -27,6 +30,7 @@ from app.models.master import (
     Tower,
 )
 from app.models.transaction import Pour, PourStatus
+from app.repositories.dispatch_repo import DispatchRepository
 from app.repositories.pour_repo import PourRepository
 from app.schemas.transaction import PourComplete, PourCreate, PourResponse
 
@@ -35,6 +39,7 @@ class PourService:
     def __init__(self, session: AsyncSession):
         self.session = session
         self.repo = PourRepository(session)
+        self.dispatch = DispatchRepository(session)
 
     async def create(
         self, data: PourCreate, project: Project, user: User
@@ -54,6 +59,7 @@ class PourService:
             raise NotFoundError("Component")
         if not await self.session.get(Grade, data.grade_id):
             raise NotFoundError("Grade")
+        await self._ensure_grade_has_approved_mix(data.grade_id, pid)
 
         supplier = await self.session.get(Supplier, data.supplier_horizontal_id)
         if not supplier or supplier.project_id != pid:
@@ -69,6 +75,16 @@ class PourService:
             if not md or md.project_id != pid:
                 raise NotFoundError("Mix design")
 
+        # A pour can't be dated before the project starts or after it ends.
+        ensure_not_after(
+            project.start_date, data.pour_date,
+            earlier_label="project start date", later_label="pour date",
+        )
+        ensure_not_after(
+            data.pour_date, project.end_date,
+            earlier_label="pour date", later_label="project end date",
+        )
+
         pour = await self.repo.add(
             Pour(
                 project_id=pid,
@@ -78,6 +94,23 @@ class PourService:
             )
         )
         return await self._to_response(pour)
+
+    async def _ensure_grade_has_approved_mix(
+        self, grade_id: int, project_id: int
+    ) -> None:
+        """A pour may only use a grade that has an APPROVED mix design on the
+        project — the mix is the contract for what gets batched."""
+        res = await self.session.execute(
+            select(MixDesign.mix_design_id)
+            .where(
+                MixDesign.project_id == project_id,
+                MixDesign.grade_id == grade_id,
+                MixDesign.approval_status == MixApprovalStatus.APPROVED,
+            )
+            .limit(1)
+        )
+        if res.scalar_one_or_none() is None:
+            raise GradeNotApprovedError()
 
     async def _ensure_tower_in_scope(
         self, tower: Tower, project: Project, user: User
@@ -106,13 +139,23 @@ class PourService:
             Pour.project_id == project.project_id,
             order_by=Pour.pour_date.desc(),
         )
-        return [await self._to_response(p) for p in pours]
+        ids = [p.pour_id for p in pours]
+        delivered = await self.dispatch.delivered_for_pours(ids)
+        outstanding = await self.dispatch.outstanding_ordered_for_pours(ids)
+        return [
+            await self._to_response(
+                p,
+                delivered=delivered.get(p.pour_id, 0.0),
+                outstanding=outstanding.get(p.pour_id, 0.0),
+            )
+            for p in pours
+        ]
 
     async def get(self, project: Project, pour_id: int) -> PourResponse:
         pour = await self.repo.get_in_project(pour_id, project.project_id)
         if not pour:
             raise NotFoundError("Pour")
-        return await self._to_response(pour)
+        return await self._to_response(pour, **await self._rollup(pour.pour_id))
 
     async def complete(
         self, project: Project, pour_id: int, data: PourComplete
@@ -131,9 +174,23 @@ class PourService:
             pour.completion_notes = data.completion_notes
         await self.session.flush()
         await self.session.refresh(pour)
-        return await self._to_response(pour)
+        return await self._to_response(pour, **await self._rollup(pour.pour_id))
 
-    async def _to_response(self, pour: Pour) -> PourResponse:
+    async def _rollup(self, pour_id: int) -> dict[str, float]:
+        """delivered + outstanding-ordered for a single pour, as _to_response kwargs."""
+        delivered = await self.dispatch.delivered_for_pour(pour_id)
+        outstanding = (
+            await self.dispatch.outstanding_ordered_for_pours([pour_id])
+        ).get(pour_id, 0.0)
+        return {"delivered": delivered, "outstanding": outstanding}
+
+    async def _to_response(
+        self,
+        pour: Pour,
+        *,
+        delivered: float = 0.0,
+        outstanding: float = 0.0,
+    ) -> PourResponse:
         # session.get hits the identity map, so repeated lookups across a list
         # don't re-query the same tower/grade/etc.
         tower = await self.session.get(Tower, pour.tower_id)
@@ -162,5 +219,11 @@ class PourService:
             volume_actual_cum=pour.volume_actual_cum,
             completion_notes=pour.completion_notes,
             completed_at=pour.completed_at,
+            volume_delivered_cum=delivered,
+            volume_remaining_cum=(
+                max(float(pour.volume_cum) - delivered - outstanding, 0.0)
+                if pour.volume_cum is not None
+                else None
+            ),
             created_at=pour.created_at,
         )

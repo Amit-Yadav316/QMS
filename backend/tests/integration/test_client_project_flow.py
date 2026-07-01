@@ -361,7 +361,7 @@ class TestFullClientToContractorJourney:
         # 9. Contractor registers an RMC supplier for the project.
         supplier = await client.post(
             f"{API}/projects/{project_id}/suppliers",
-            json={"supplier_name": "UltraTech RMC"},
+            json={"supplier_name": "UltraTech RMC", "contact_email": "plant@ultratech.example"},
             headers=bearer(contractor_token),
         )
         assert supplier.status_code == 201, supplier.text

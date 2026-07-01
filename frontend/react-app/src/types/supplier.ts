@@ -20,6 +20,7 @@ export interface SupplierCreate {
   no_transit_mixers?: number | null;
   no_concrete_pumps?: number | null;
   qms_certification?: string | null;
+  mix_design_document_id?: number | null;
 }
 
 export interface SupplierResponse {
@@ -36,6 +37,11 @@ export interface SupplierResponse {
   is_active: boolean;
   status: ConfirmationStatus;
   confirmed_at: string | null;
+  is_blocked: boolean;
+  block_reason: string | null;
+  mix_design_document_id: number | null;
+  mix_design_document_name: string | null;
+  mix_submission_token: string | null;
   created_at: string;
 }
 

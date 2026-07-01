@@ -7,6 +7,8 @@ import { AcceptInvitationPage } from './pages/AcceptInvitationPage';
 import { VerifyOtpPage } from './pages/VerifyOtpPage';
 import { ConfirmRegistration } from './pages/ConfirmRegistration';
 import { DispatchFill } from './pages/DispatchFill';
+import { LabReport } from './pages/LabReport';
+import { MixDesignSubmit } from './pages/MixDesignSubmit';
 
 // Workspace entry + project listing
 import { AppHome } from './pages/AppHome';
@@ -28,13 +30,14 @@ import { ProjectMixDesigns } from './pages/project/ProjectMixDesigns';
 import { ProjectFloors } from './pages/project/ProjectFloors';
 import { Analytics } from './pages/project/Analytics';
 import { ProjectDocuments } from './pages/project/ProjectDocuments';
-import { AuditManagement } from './pages/project/AuditManagement';
 import { Traceability } from './pages/project/Traceability';
 import { PourCardForm } from './pages/project/PourCardForm';
 import { ProjectPours } from './pages/project/ProjectPours';
 import { ProjectDispatches } from './pages/project/ProjectDispatches';
 import { ProjectCubeTests } from './pages/project/ProjectCubeTests';
 import { GateScan } from './pages/project/GateScan';
+import { QEInbox } from './pages/project/QEInbox';
+import { Alerts } from './pages/project/Alerts';
 import { NCRDashboard } from './pages/project/NCRDashboard';
 import { Chatbot } from './pages/project/Chatbot';
 
@@ -45,6 +48,8 @@ function App() {
         {/* External / public routes */}
         <Route path="/external/confirm/:kind" element={<ConfirmRegistration />} />
         <Route path="/dispatch/fill" element={<DispatchFill />} />
+        <Route path="/external/lab-report" element={<LabReport />} />
+        <Route path="/external/mix-design" element={<MixDesignSubmit />} />
         <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/auth/accept-invitation" element={<AcceptInvitationPage />} />
@@ -65,13 +70,14 @@ function App() {
               <Route index element={<ProjectOverview />} />
               <Route path="analytics" element={<Analytics />} />
               <Route path="documents" element={<ProjectDocuments />} />
-              <Route path="audits" element={<AuditManagement />} />
               <Route path="trace" element={<Traceability />} />
               <Route path="pours" element={<ProjectPours />} />
               <Route path="pours/new" element={<PourCardForm />} />
               <Route path="dispatches" element={<ProjectDispatches />} />
               <Route path="cube" element={<ProjectCubeTests />} />
               <Route path="gate" element={<GateScan />} />
+              <Route path="qe-inbox" element={<QEInbox />} />
+              <Route path="alerts" element={<Alerts />} />
               <Route path="ncr" element={<NCRDashboard />} />
               <Route path="chatbot" element={<Chatbot />} />
               <Route path="team" element={<ProjectTeam />} />

@@ -76,9 +76,10 @@ class LabType(str, enum.Enum):
 
 
 class MixApprovalStatus(str, enum.Enum):
+    PENDING = "PENDING"  # submitted by the RMC, awaiting QE review
     APPROVED = "APPROVED"
     REJECTED = "REJECTED"
-    IN_PROGRESS = "IN_PROGRESS"
+    IN_PROGRESS = "IN_PROGRESS"  # QE has it under review
 
 
 class Project(Base):
@@ -333,6 +334,17 @@ class Supplier(Base):
     contact_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     contact_phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # ── Block/unblock (Phase 5A): a QE/PM/contractor blocks a supplier with a
+    # reason so no NEW dispatches or mix-design requests go to it (in-flight items
+    # keep working); unblock clears it. ──
+    is_blocked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    block_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    blocked_by: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("auth.users.user_id"), nullable=True
+    )
+    blocked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     # ── Confirmation handshake (passwordless, token-based) ──
     # PENDING → CONFIRMED / DECLINED. The supplier never gets a portal account;
     # they confirm their details via a tokenised email link.
@@ -361,12 +373,54 @@ class Supplier(Base):
     no_transit_mixers: Mapped[int | None] = mapped_column(Integer, nullable=True)
     no_concrete_pumps: Mapped[int | None] = mapped_column(Integer, nullable=True)
     qms_certification: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    # Mix-design PDF attached from the project document store at registration.
+    mix_design_document_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("master.documents.document_id"), nullable=True
+    )
+    # ── RMC mix-design submission link (Phase 4A, separate from the contact
+    # confirmation token) — the RMC submits a mix design per grade the contractor
+    # requested through this tokenised public page. ──
+    mix_submission_token: Mapped[str | None] = mapped_column(
+        String(100), nullable=True, unique=True
+    )
+    mix_submission_sent_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
 
     mix_designs: Mapped[list["MixDesign"]] = relationship(
         "MixDesign", back_populates="supplier"
+    )
+    required_grades: Mapped[list["SupplierRequiredGrade"]] = relationship(
+        "SupplierRequiredGrade", back_populates="supplier"
+    )
+
+
+class SupplierRequiredGrade(Base):
+    """A grade the contractor wants this RMC supplier to submit a mix design for.
+    The RMC fills one mix-design form per required grade via its submission link."""
+
+    __tablename__ = "supplier_required_grades"
+    __table_args__ = (
+        UniqueConstraint("supplier_id", "grade_id", name="uq_supplier_required_grade"),
+        {"schema": "master"},
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    supplier_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("master.suppliers.supplier_id"), nullable=False
+    )
+    grade_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("master.grades.grade_id"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    supplier: Mapped["Supplier"] = relationship(
+        "Supplier", back_populates="required_grades"
     )
 
 
@@ -424,6 +478,30 @@ class MixDesign(Base):
     approved_by: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("auth.users.user_id"), nullable=True
     )
+    # ── RMC-submitted mix design + QE review (Phase 4A) ──
+    # The RMC fills the detailed form per requested grade; the QE reviews
+    # (approve / reject-with-reason / in-progress) and records the strength they
+    # observed at 28 days. ``mix_design_ref`` is the RMC's own label ("MIX-001").
+    mix_design_ref: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    mix_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    exposure_condition: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    ggbs_kg: Mapped[float | None] = mapped_column(Numeric(7, 2), nullable=True)
+    total_binder_kg: Mapped[float | None] = mapped_column(Numeric(7, 2), nullable=True)
+    free_water_l: Mapped[float | None] = mapped_column(Numeric(7, 2), nullable=True)
+    target_mean_strength_mpa: Mapped[float | None] = mapped_column(
+        Numeric(6, 2), nullable=True
+    )
+    max_aggregate_size_mm: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    slump_range_mm: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    rejection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    observed_28day_strength_mpa: Mapped[float | None] = mapped_column(
+        Numeric(6, 2), nullable=True
+    )
+    # The mandatory mix-design PDF the RMC attaches at submission (a master.documents
+    # row, reviewed by the QE/PM like any document).
+    document_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("master.documents.document_id"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -452,6 +530,16 @@ class TestingLab(Base):
     contact_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     contact_phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # ── Block/unblock (Phase 5A): a QE/PM/contractor blocks a lab with a reason so
+    # no NEW cube samples / report links go to it (in-flight items keep working). ──
+    is_blocked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    block_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    blocked_by: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("auth.users.user_id"), nullable=True
+    )
+    blocked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     # ── Confirmation handshake (passwordless, token-based) ──
     # PENDING → CONFIRMED / DECLINED. The lab never gets a portal account; they
     # confirm their details (and complete their profile) via a tokenised link.
@@ -513,6 +601,18 @@ class Document(Base):
     size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     uploaded_by: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("auth.users.user_id"), nullable=True
+    )
+    # ── Review workflow: a QE or PM approves/rejects each document; nothing
+    # downstream relies on a document until it's APPROVED. PENDING on upload. ──
+    approval_status: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default="PENDING"
+    )
+    rejection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reviewed_by: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("auth.users.user_id"), nullable=True
+    )
+    reviewed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
     uploaded_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Confirm your details</title></head>
+<body style="font-family:sans-serif;color:#333;max-width:520px;margin:0 auto;padding:24px">
+  <h2 style="color:#1e293b">Confirm your details on Strata</h2>
+  <p>Hi {{ party_name }},</p>
+  <p><strong>{{ registered_by }}</strong> has registered your {{ role_label }} on
+  <strong>Strata</strong> for the project <strong>{{ project_name }}</strong>.</p>
+  <p>Please confirm your contact details so you can start receiving requests.
+  No account or password is needed.</p>
+  <p style="margin:24px 0">
+    <a href="{{ confirm_url }}"
+       style="background:#1A56DB;color:#fff;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:600">
+      Review &amp; confirm
+    </a>
+  </p>
+  <p style="color:#64748b;font-size:13px">If this wasn't meant for you, you can
+  decline on that page. This link is unique to you — please don't share it.</p>
+  <hr style="border:none;border-top:1px solid #eee;margin-top:32px">
+  <p style="color:#999;font-size:12px">Strata · Construction QMS</p>
+</body>
+</html>

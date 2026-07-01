@@ -19,6 +19,7 @@ client already exists — wipe first with `uv run python scripts/wipe_db.py --ye
 """
 
 import asyncio
+import json
 import sys
 from datetime import UTC, datetime
 
@@ -241,15 +242,32 @@ async def _run_cube(c, qe_tok, pid, *, pour_id, grade_min, outcome, cast_date, t
         ),
         "cast sample",
     ).json()
+    # Results now come from the lab through its tokenised link. Grab the link the
+    # QE would share, then submit the 28-day report the way a lab would.
+    link = _ok(
+        await c.post(
+            f"{API}/projects/{pid}/samples/{sample['sample_id']}/report-link",
+            headers=_bearer(qe_tok),
+        ),
+        "get lab report link",
+    ).json()
+    token = link["token"]
+    _ok(
+        await c.post(
+            f"{API}/external/lab-report/start?token={token}",
+            json={"testing_started_on": cast_date},
+        ),
+        "lab: start testing",
+    )
     observed = round(grade_min * _FACTOR[outcome], 1)
     _ok(
         await c.post(
-            f"{API}/projects/{pid}/samples/{sample['sample_id']}/tests",
-            json={"test_age_days": 28, "test_date": test_date,
-                  "observed_strength_mpa": observed, "lab_id": lab_id},
-            headers=_bearer(qe_tok),
+            f"{API}/external/lab-report?token={token}",
+            data={"test_age_days": "28", "test_date": test_date,
+                  "observed_strength_mpa": str(observed)},
+            files={"file": ("lab-report.pdf", b"%PDF-1.4 demo report", "application/pdf")},
         ),
-        "record test",
+        "lab: submit 28-day report",
     )
 
 
@@ -377,6 +395,52 @@ async def seed() -> None:
         comp_by = {c2["component_type"]: c2 for c2 in components}
         grade_by = {g["grade_name"]: g for g in grades}
         fallback_grade = grades[0]
+
+        # A pour may only use a grade with an APPROVED mix design. Mix designs are
+        # RMC-owned now: the contractor requests the grades it needs from each
+        # supplier → the RMC submits one per grade via its tokenised link → the QE
+        # approves. Group the plan's grades per supplier, then drive that flow.
+        grades_by_supplier: dict[int, set[int]] = {}
+        for _ti, _fi, _comp, gname, skey, *_rest in POUR_PLAN:
+            grade = grade_by.get(gname) or fallback_grade
+            supplier = suppliers[skey]
+            grades_by_supplier.setdefault(supplier["supplier_id"], set()).add(
+                grade["grade_id"]
+            )
+
+        for sup_id, grade_ids in grades_by_supplier.items():
+            _ok(
+                await c.put(
+                    f"{API}/projects/{pid}/suppliers/{sup_id}/required-grades",
+                    json={"grade_ids": sorted(grade_ids)},
+                    headers=_bearer(contractor_tok),
+                ),
+                "request mix grades",
+            )
+            sups = _ok(
+                await c.get(f"{API}/projects/{pid}/suppliers", headers=_bearer(contractor_tok)),
+                "suppliers",
+            ).json()
+            token = next(
+                s["mix_submission_token"] for s in sups if s["supplier_id"] == sup_id
+            )
+            for gid in sorted(grade_ids):
+                submitted = _ok(
+                    await c.post(
+                        f"{API}/external/mix-design?token={token}",
+                        data={"payload": json.dumps({"grade_id": gid, "wc_ratio": 0.45})},
+                        files={"file": ("mix-design.pdf", b"%PDF-1.4 demo mix", "application/pdf")},
+                    ),
+                    "submit mix design",
+                ).json()
+                _ok(
+                    await c.patch(
+                        f"{API}/projects/{pid}/mix-designs/{submitted['mix_design_id']}/review",
+                        json={"approval_status": "APPROVED"},
+                        headers=_bearer(qe_tok),
+                    ),
+                    "approve mix design",
+                )
 
         ncr_pours = 0
         for seq, (ti, fi, comp, gname, skey, outcome, cast, test, truck) in enumerate(POUR_PLAN, 1):

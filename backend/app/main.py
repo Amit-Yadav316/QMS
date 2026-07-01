@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.routers import (
     ai_suggestions,
+    alerts,
     analytics,
     auth,
     catalog,
@@ -14,8 +15,10 @@ from app.routers import (
     dispatches,
     documents,
     floors,
+    lab_report,
     labs,
     mix_designs,
+    mix_submission,
     ncrs,
     pours,
     projects,
@@ -60,14 +63,17 @@ def create_app() -> FastAPI:
     app.include_router(catalog.router, prefix=settings.API_V1_PREFIX)
     app.include_router(floors.router, prefix=settings.API_V1_PREFIX)
     app.include_router(mix_designs.router, prefix=settings.API_V1_PREFIX)
+    app.include_router(mix_submission.router, prefix=settings.API_V1_PREFIX)
     app.include_router(confirmations.router, prefix=settings.API_V1_PREFIX)
     app.include_router(pours.router, prefix=settings.API_V1_PREFIX)
     app.include_router(dispatches.router, prefix=settings.API_V1_PREFIX)
     app.include_router(dispatch_token.router, prefix=settings.API_V1_PREFIX)
     app.include_router(cube_tests.router, prefix=settings.API_V1_PREFIX)
+    app.include_router(lab_report.router, prefix=settings.API_V1_PREFIX)
     app.include_router(ncrs.router, prefix=settings.API_V1_PREFIX)
     app.include_router(ai_suggestions.router, prefix=settings.API_V1_PREFIX)
     app.include_router(analytics.router, prefix=settings.API_V1_PREFIX)
+    app.include_router(alerts.router, prefix=settings.API_V1_PREFIX)
     app.include_router(traceability.router, prefix=settings.API_V1_PREFIX)
     app.include_router(documents.router, prefix=settings.API_V1_PREFIX)
     app.include_router(chatbot.router, prefix=settings.API_V1_PREFIX)

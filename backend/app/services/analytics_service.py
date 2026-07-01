@@ -18,13 +18,23 @@ directly (``Pour.project_id``) or through their pour:
     truck     → rmc_dispatch → link → pour    (dispatch / gate)
 """
 
+import math
 from datetime import date
+from statistics import mean, pstdev
 
 from sqlalchemy import case, distinct, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Select
 
-from app.models.master import Grade, Project, Supplier
+from app.core import quality_engine
+from app.models.master import (
+    Grade,
+    MixApprovalStatus,
+    MixDesign,
+    Project,
+    Supplier,
+    Tower,
+)
 from app.models.quality import NCR, CubeTest, NCRStatus, ResultStatus
 from app.models.transaction import (
     CubeSample,
@@ -34,14 +44,26 @@ from app.models.transaction import (
     TruckStatus,
 )
 from app.schemas.analytics import (
+    AgePoint,
+    CurvePoint,
+    DistributionCurve,
     GradeTrendPoint,
     OverviewKpis,
     QualityAnalytics,
     ResultBreakdown,
+    RunChart,
+    RunPoint,
+    StrengthAgeChart,
     StrengthBucket,
     SupplierNcrCount,
     SupplierScore,
+    TargetMeanChart,
+    TargetMeanRow,
 )
+
+# Below this many results we fall back to the IS-10262 assumed σ rather than a
+# noisy computed one.
+_MIN_SAMPLES_FOR_STDEV = 30
 
 # Strength-distribution buckets (MPa), in display order.
 _BUCKET_ORDER = ["<35", "35-40", "40-45", "45-50", "50-55", "55+"]
@@ -222,6 +244,243 @@ class AnalyticsService:
             )
             for sid, name, total, closed, open_, crit in rows
         ]
+
+    # ── Phase 5B: IS-456 / IS-10262 statistical charts (filter-driven) ────────
+
+    async def run_chart(
+        self,
+        project: Project,
+        *,
+        date_from: date | None = None,
+        date_to: date | None = None,
+        grade_id: int | None = None,
+        tower_id: int | None = None,
+    ) -> RunChart:
+        """Chronological individual (final-age) results + IS-456 control lines.
+        Control lines are populated only when a single grade is filtered."""
+        conds = [
+            Pour.project_id == project.project_id,
+            self._final_test_cond(),
+            *self._dim_conds(
+                CubeTest.test_date, date_from=date_from, date_to=date_to,
+                grade_id=grade_id, tower_id=tower_id,
+            ),
+        ]
+        rows = (
+            await self.session.execute(
+                self._ct_join(
+                    CubeTest.test_date,
+                    CubeTest.observed_strength_mpa,
+                    Grade.grade_name,
+                    Tower.tower_name,
+                    Pour.pour_reference,
+                )
+                .join(Grade, Grade.grade_id == Pour.grade_id)
+                .join(Tower, Tower.tower_id == Pour.tower_id)
+                .where(*conds)
+                .order_by(CubeTest.test_date, CubeTest.test_id)
+            )
+        ).all()
+        points = [
+            RunPoint(
+                test_date=d.isoformat(), observed_mpa=float(o),
+                grade_name=g, tower_name=t, reference=r,
+            )
+            for d, o, g, t, r in rows
+        ]
+        chart = RunChart(points=points)
+        grade = await self.session.get(Grade, grade_id) if grade_id else None
+        if grade:
+            observed = [p.observed_mpa for p in points]
+            fck = float(grade.min_strength_mpa)
+            sigma = self._sigma(observed)
+            chart.grade_name = grade.grade_name
+            chart.fck = fck
+            chart.individual_min = round(fck - 3, 2)
+            chart.target_mean = await self._target_for_grade(
+                project.project_id, grade_id, fck, sigma
+            )
+            chart.mean = round(mean(observed), 2) if observed else None
+        return chart
+
+    async def distribution(
+        self,
+        project: Project,
+        *,
+        date_from: date | None = None,
+        date_to: date | None = None,
+        grade_id: int | None = None,
+        tower_id: int | None = None,
+    ) -> DistributionCurve:
+        """Normal distribution (mean + σ recomputed on the filtered set)."""
+        conds = [
+            Pour.project_id == project.project_id,
+            self._final_test_cond(),
+            *self._dim_conds(
+                CubeTest.test_date, date_from=date_from, date_to=date_to,
+                grade_id=grade_id, tower_id=tower_id,
+            ),
+        ]
+        observed = [
+            float(x)
+            for x in (
+                await self.session.execute(
+                    self._ct_join(CubeTest.observed_strength_mpa).where(*conds)
+                )
+            ).scalars().all()
+        ]
+        curve = DistributionCurve(sample_count=len(observed))
+        grade = await self.session.get(Grade, grade_id) if grade_id else None
+        if grade:
+            curve.fck = float(grade.min_strength_mpa)
+        if len(observed) >= 2:
+            mu, sigma = mean(observed), pstdev(observed)
+            curve.mean, curve.std_dev = round(mu, 2), round(sigma, 2)
+            if sigma > 0:
+                lo, hi = mu - 4 * sigma, mu + 4 * sigma
+                step = (hi - lo) / 40
+                curve.curve = [
+                    CurvePoint(
+                        x=round(lo + i * step, 2),
+                        y=round(
+                            math.exp(-(((lo + i * step) - mu) ** 2) / (2 * sigma * sigma))
+                            / (sigma * math.sqrt(2 * math.pi)),
+                            6,
+                        ),
+                    )
+                    for i in range(41)
+                ]
+        curve.histogram = await self._strength_distribution(conds)
+        return curve
+
+    async def target_mean_bar(
+        self,
+        project: Project,
+        *,
+        date_from: date | None = None,
+        date_to: date | None = None,
+        tower_id: int | None = None,
+    ) -> TargetMeanChart:
+        """Per grade: IS-10262 target mean (fck+1.65σ) vs the actual site average."""
+        conds = [
+            Pour.project_id == project.project_id,
+            self._final_test_cond(),
+            *self._dim_conds(
+                CubeTest.test_date, date_from=date_from, date_to=date_to, tower_id=tower_id
+            ),
+        ]
+        rows = (
+            await self.session.execute(
+                self._ct_join(
+                    Pour.grade_id,
+                    Grade.grade_name,
+                    Grade.min_strength_mpa,
+                    CubeTest.observed_strength_mpa,
+                )
+                .join(Grade, Grade.grade_id == Pour.grade_id)
+                .where(*conds)
+            )
+        ).all()
+        by_grade: dict = {}
+        for gid, gname, fck, obs in rows:
+            entry = by_grade.setdefault(gid, {"name": gname, "fck": float(fck), "obs": []})
+            entry["obs"].append(float(obs))
+        out: list[TargetMeanRow] = []
+        for gid, d in sorted(by_grade.items(), key=lambda kv: kv[1]["fck"]):
+            # Target = the RMC's stated design target (mix design), else IS-10262.
+            target = await self._target_for_grade(
+                project.project_id, gid, d["fck"], self._sigma(d["obs"])
+            )
+            out.append(
+                TargetMeanRow(
+                    grade_name=d["name"],
+                    fck=d["fck"],
+                    target_mean=target,
+                    actual_mean=round(mean(d["obs"]), 2) if d["obs"] else None,
+                    sample_count=len(d["obs"]),
+                )
+            )
+        return TargetMeanChart(rows=out)
+
+    async def strength_vs_age(
+        self,
+        project: Project,
+        *,
+        date_from: date | None = None,
+        date_to: date | None = None,
+        grade_id: int | None = None,
+        tower_id: int | None = None,
+        component_id: int | None = None,
+        sample_id: int | None = None,
+    ) -> StrengthAgeChart:
+        """3/7/28-day results for a specific batch (cube sample) or pour/element —
+        all ages, not just the final. A ``sample_id`` pins one batch by the exact
+        reference the lab tested against."""
+        conds = [
+            Pour.project_id == project.project_id,
+            *self._dim_conds(
+                Pour.pour_date, date_from=date_from, date_to=date_to,
+                grade_id=grade_id, tower_id=tower_id,
+            ),
+        ]
+        if component_id is not None:
+            conds.append(Pour.component_id == component_id)
+        if sample_id is not None:
+            conds.append(CubeTest.sample_id == sample_id)
+        rows = (
+            await self.session.execute(
+                self._ct_join(
+                    CubeTest.test_age_days,
+                    CubeTest.observed_strength_mpa,
+                    CubeTest.required_strength_mpa,
+                    Grade.grade_name,
+                    CubeSample.sample_reference,
+                )
+                .join(Grade, Grade.grade_id == Pour.grade_id)
+                .where(*conds)
+                .order_by(CubeTest.test_age_days, CubeTest.test_id)
+            )
+        ).all()
+        points = [
+            AgePoint(
+                test_age_days=a,
+                observed_mpa=float(o),
+                required_mpa=float(r) if r is not None else None,
+            )
+            for a, o, r, _g, _ref in rows
+        ]
+        return StrengthAgeChart(
+            points=points,
+            grade_name=rows[0][3] if rows else None,
+            reference=rows[0][4] if rows else None,
+        )
+
+    @staticmethod
+    def _sigma(observed: list[float]) -> float | None:
+        """Computed σ once there's enough data; else None → IS-10262 assumed σ."""
+        return pstdev(observed) if len(observed) >= _MIN_SAMPLES_FOR_STDEV else None
+
+    async def _mix_target_mean(self, project_id: int, grade_id: int) -> float | None:
+        """The RMC's design target mean strength for a grade, from an approved
+        mix design (the RMC states it on the mix-design form)."""
+        val = (
+            await self.session.execute(
+                select(func.max(MixDesign.target_mean_strength_mpa)).where(
+                    MixDesign.project_id == project_id,
+                    MixDesign.grade_id == grade_id,
+                    MixDesign.approval_status == MixApprovalStatus.APPROVED,
+                    MixDesign.target_mean_strength_mpa.isnot(None),
+                )
+            )
+        ).scalar_one_or_none()
+        return float(val) if val is not None else None
+
+    async def _target_for_grade(
+        self, project_id: int, grade_id: int, fck: float, sigma: float | None
+    ) -> float:
+        """Prefer the RMC's stated target mean; fall back to IS-10262 fck+1.65σ."""
+        mix = await self._mix_target_mean(project_id, grade_id)
+        return mix if mix is not None else quality_engine.target_mean_strength(fck, sigma)
 
     # ── Overview helpers ─────────────────────────────────────────────────────
 

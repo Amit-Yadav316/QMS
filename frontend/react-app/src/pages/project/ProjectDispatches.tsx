@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Plus, Send, Copy, Check } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
@@ -15,10 +15,11 @@ import { usePours } from '../../queries/pours';
 import type { DispatchResponse, TruckStatus } from '../../types/master';
 
 const TRUCK_VARIANT: Record<TruckStatus, 'pass' | 'fail' | 'warn' | 'info' | 'pending'> = {
-  PENDING: 'pending', FILLED: 'info', ARRIVED: 'warn', ACCEPTED: 'pass', REJECTED: 'fail',
+  PENDING: 'pending', FILLED: 'info', ARRIVED: 'warn', PENDING_QE: 'warn', ACCEPTED: 'pass', REJECTED: 'fail',
 };
 const TRUCK_LABEL: Record<TruckStatus, string> = {
-  PENDING: 'Awaiting truck', FILLED: 'Filled at plant', ARRIVED: 'At gate', ACCEPTED: 'Accepted', REJECTED: 'Rejected',
+  PENDING: 'Awaiting truck', FILLED: 'Filled at plant', ARRIVED: 'At gate',
+  PENDING_QE: 'Awaiting QE', ACCEPTED: 'Accepted', REJECTED: 'Rejected',
 };
 
 const fillLink = (token: string) => `${window.location.origin}/dispatch/fill?token=${token}`;
@@ -41,12 +42,27 @@ export const ProjectDispatches: React.FC = () => {
   const [volume, setVolume] = useState('');
   const [copiedId, setCopiedId] = useState<number | null>(null);
 
+  // Only pours that still need concrete can be dispatched to — a completed pour
+  // is done, so it drops out of the picker.
+  const openPours = useMemo(
+    () => pours.filter((p) => p.status !== 'COMPLETED' && p.status !== 'CANCELLED'),
+    [pours],
+  );
+
   // A dispatch carries the supplier + grade of its pour, so picking the pour is
   // all the QE needs — they just add the ordered volume.
   const selectedPour = useMemo(
     () => pours.find((p) => p.pour_id === Number(pourId)) ?? null,
     [pours, pourId],
   );
+
+  // Auto-fill the order with the pour's remaining volume (planned − delivered −
+  // outstanding) so the QE just confirms it. They can still override.
+  useEffect(() => {
+    if (selectedPour?.volume_remaining_cum != null) {
+      setVolume(String(selectedPour.volume_remaining_cum));
+    }
+  }, [selectedPour]);
 
   const canSubmit = selectedPour !== null && volume.trim() !== '' && Number(volume) > 0;
 
@@ -112,9 +128,10 @@ export const ProjectDispatches: React.FC = () => {
                 value={pourId}
                 onChange={(e) => setPourId(e.target.value)}
                 options={[
-                  { label: pours.length ? 'Select pour…' : 'No pours yet — raise one first', value: '' },
-                  ...pours.map((p) => ({
-                    label: `${p.pour_reference ?? `PC-${p.pour_id}`} · ${p.grade_name ?? '—'} · ${p.supplier_name ?? '—'}`,
+                  { label: openPours.length ? 'Select pour…' : 'No open pours — raise one first', value: '' },
+                  ...openPours.map((p) => ({
+                    label: `${p.pour_reference ?? `PC-${p.pour_id}`} · ${p.grade_name ?? '—'} · ${p.supplier_name ?? '—'}`
+                      + (p.volume_remaining_cum != null ? ` · ${p.volume_remaining_cum} m³ left` : ''),
                     value: p.pour_id,
                   })),
                 ]}
@@ -126,7 +143,7 @@ export const ProjectDispatches: React.FC = () => {
                 disabled
               />
               <Input
-                label="Volume ordered (m³)"
+                label={`Volume ordered (m³)${selectedPour?.volume_remaining_cum != null ? ` · ${selectedPour.volume_remaining_cum} left on this pour` : ''}`}
                 type="number"
                 step="0.5"
                 min="0"

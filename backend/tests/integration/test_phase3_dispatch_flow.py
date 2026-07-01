@@ -8,10 +8,13 @@ Plus RBAC (QE raises, Supervisor gates), the truck state machine, and volume
 accounting on accept.
 """
 
+from datetime import UTC, datetime, timedelta
+
 from sqlalchemy import select
 
 from app.models.auth import OrgInvitation
-from tests.helpers import API, accept_and_verify, bearer
+from app.models.transaction import RMCDispatch
+from tests.helpers import API, accept_and_verify, approve_mix_design, bearer
 from tests.integration.test_phase2_pour_flow import _project_with_qe
 
 
@@ -60,6 +63,16 @@ async def _dispatch_refs(client, contractor_token, qe_token, project_id) -> dict
             headers=bearer(contractor_token),
         )
     ).json()
+    # A pour needs an APPROVED mix design for its grade (see PourService) — drive
+    # the RMC-owned flow (request grade → RMC submits → QE approves).
+    await approve_mix_design(
+        client,
+        contractor_token=contractor_token,
+        qe_token=qe_token,
+        project_id=project_id,
+        supplier_id=supplier["supplier_id"],
+        grade_id=m30["grade_id"],
+    )
     pour = (
         await client.post(
             f"{API}/projects/{project_id}/pours",
@@ -126,23 +139,18 @@ class TestDispatchCreation:
         resp = await _raise_dispatch(client, contractor_token, pid, refs)
         assert resp.status_code == 403
 
-    async def test_dispatch_requires_supplier_with_email(self, client, db_session):
-        contractor_token, qe_token, _, pid = await _project_with_qe_and_supervisor(
+    async def test_supplier_registration_requires_contact_email(self, client, db_session):
+        contractor_token, _, _, pid = await _project_with_qe_and_supervisor(
             client, db_session
         )
-        refs = await _dispatch_refs(client, contractor_token, qe_token, pid)
-        # A second supplier with no contact email can't be dispatched to.
-        no_email = (
-            await client.post(
-                f"{API}/projects/{pid}/suppliers",
-                json={"supplier_name": "ACC Plant"},
-                headers=bearer(contractor_token),
-            )
-        ).json()
-        resp = await _raise_dispatch(
-            client, qe_token, pid, {**refs, "supplier_id": no_email["supplier_id"]}
+        # A supplier interacts only via tokenised email links, so an email is
+        # mandatory at registration (422 without it).
+        resp = await client.post(
+            f"{API}/projects/{pid}/suppliers",
+            json={"supplier_name": "ACC Plant"},
+            headers=bearer(contractor_token),
         )
-        assert resp.status_code == 403
+        assert resp.status_code == 422
 
 
 class TestTruckFill:
@@ -203,14 +211,33 @@ class TestGate:
         )
         assert arrived.json()["truck"]["status"] == "ARRIVED"
 
-        accepted = await client.post(
+        # Supervisor admission is provisional — the truck waits for the QE.
+        provisional = await client.post(
             f"{API}/projects/{pid}/gate/{token}/accept", headers=bearer(sup_token)
+        )
+        assert provisional.status_code == 200, provisional.text
+        assert provisional.json()["truck"]["status"] == "PENDING_QE"
+
+        # Nothing is credited until the QE signs off the in-situ slump test.
+        dispatch = (
+            await client.get(
+                f"{API}/projects/{pid}/dispatches/{dispatch_id}",
+                headers=bearer(qe_token),
+            )
+        ).json()
+        assert dispatch["volume_received_cum"] in (None, 0, 0.0)
+
+        accepted = await client.post(
+            f"{API}/projects/{pid}/dispatches/{dispatch_id}/insitu",
+            json={"measured_slump_mm": 105, "decision": "APPROVED"},
+            headers=bearer(qe_token),
         )
         assert accepted.status_code == 200, accepted.text
         assert accepted.json()["truck"]["status"] == "ACCEPTED"
         assert accepted.json()["truck"]["accepted_at"] is not None
+        assert accepted.json()["insitu"]["result"] == "PASS"
 
-        # Volume accounting lands on the dispatch.
+        # Volume accounting lands on the dispatch only after QE acceptance.
         dispatch = (
             await client.get(
                 f"{API}/projects/{pid}/dispatches/{dispatch_id}",
@@ -220,7 +247,7 @@ class TestGate:
         assert dispatch["volume_received_cum"] == 6.0
         assert dispatch["volume_remaining_cum"] == 24.0
         assert dispatch["is_complete"] is False
-        assert dispatch["slump_at_site_mm"] == 110.0
+        assert dispatch["slump_at_site_mm"] == 105.0
 
     async def test_accept_before_arrive_is_rejected(self, client, db_session):
         contractor_token, qe_token, sup_token, pid = (
@@ -271,3 +298,173 @@ class TestGate:
             f"{API}/projects/{pid}/gate/{token}", headers=bearer(qe_token)
         )
         assert resp.status_code == 403
+
+
+async def _pour_view(client, qe_token, pid, pour_id):
+    return (
+        await client.get(f"{API}/projects/{pid}/pours/{pour_id}", headers=bearer(qe_token))
+    ).json()
+
+
+async def _deliver(client, qe_token, sup_token, pid, refs, *, ordered, delivered):
+    """Order a truck, fill it, scan it in, supervisor-accept (→PENDING_QE), then
+    the QE signs off the in-situ slump test (→ACCEPTED + credited)."""
+    created = (
+        await _raise_dispatch(client, qe_token, pid, refs, volume_ordered=ordered)
+    ).json()
+    dispatch_id, token = created["dispatch_id"], created["truck"]["token"]
+    await _fill_truck(client, token, volume_cum=delivered)
+    await client.post(
+        f"{API}/projects/{pid}/gate/{token}/arrive", json={}, headers=bearer(sup_token)
+    )
+    await client.post(
+        f"{API}/projects/{pid}/gate/{token}/accept", headers=bearer(sup_token)
+    )
+    await client.post(
+        f"{API}/projects/{pid}/dispatches/{dispatch_id}/insitu",
+        json={"measured_slump_mm": 100, "decision": "APPROVED"},
+        headers=bearer(qe_token),
+    )
+    return token
+
+
+class TestPourVolumeFlow:
+    """Pour↔dispatch volume rollup: remaining auto-fills the next order, full
+    delivery auto-completes the pour, a short/rejected delivery leaves it open."""
+
+    async def test_remaining_reflects_outstanding_orders(self, client, db_session):
+        contractor_token, qe_token, sup_token, pid = (
+            await _project_with_qe_and_supervisor(client, db_session)
+        )
+        refs = await _dispatch_refs(client, contractor_token, qe_token, pid)  # pour = 30 m³
+        # Order 20 (truck still PENDING) → 10 left to order, nothing delivered yet.
+        await _raise_dispatch(client, qe_token, pid, refs, volume_ordered=20.0)
+        pour = await _pour_view(client, qe_token, pid, refs["pour_id"])
+        assert pour["volume_remaining_cum"] == 10.0
+        assert pour["volume_delivered_cum"] == 0.0
+        assert pour["status"] == "PLANNED"
+
+    async def test_full_delivery_auto_completes_pour(self, client, db_session):
+        contractor_token, qe_token, sup_token, pid = (
+            await _project_with_qe_and_supervisor(client, db_session)
+        )
+        refs = await _dispatch_refs(client, contractor_token, qe_token, pid)  # 30 m³
+        await _deliver(client, qe_token, sup_token, pid, refs, ordered=30.0, delivered=30.0)
+        pour = await _pour_view(client, qe_token, pid, refs["pour_id"])
+        assert pour["status"] == "COMPLETED"
+        assert pour["completed_at"] is not None
+        assert pour["volume_delivered_cum"] == 30.0
+        assert pour["volume_actual_cum"] == 30.0
+        assert pour["volume_remaining_cum"] == 0.0
+
+    async def test_short_delivery_leaves_pour_open_with_remaining(self, client, db_session):
+        contractor_token, qe_token, sup_token, pid = (
+            await _project_with_qe_and_supervisor(client, db_session)
+        )
+        refs = await _dispatch_refs(client, contractor_token, qe_token, pid)  # 30 m³
+        # Ordered 30 but only 20 made it (slump short on one truck).
+        await _deliver(client, qe_token, sup_token, pid, refs, ordered=30.0, delivered=20.0)
+        pour = await _pour_view(client, qe_token, pid, refs["pour_id"])
+        assert pour["status"] == "IN_PROGRESS"
+        assert pour["volume_delivered_cum"] == 20.0
+        # The 10 m³ shortfall is free to re-order.
+        assert pour["volume_remaining_cum"] == 10.0
+
+    async def test_rejected_delivery_frees_the_volume(self, client, db_session):
+        contractor_token, qe_token, sup_token, pid = (
+            await _project_with_qe_and_supervisor(client, db_session)
+        )
+        refs = await _dispatch_refs(client, contractor_token, qe_token, pid)  # 30 m³
+        created = (
+            await _raise_dispatch(client, qe_token, pid, refs, volume_ordered=30.0)
+        ).json()
+        token = created["truck"]["token"]
+        await _fill_truck(client, token, volume_cum=30.0)
+        await client.post(
+            f"{API}/projects/{pid}/gate/{token}/reject",
+            json={"rejection_reason": "Slump out of range at the gate"},
+            headers=bearer(sup_token),
+        )
+        pour = await _pour_view(client, qe_token, pid, refs["pour_id"])
+        assert pour["status"] == "PLANNED"
+        assert pour["volume_delivered_cum"] == 0.0
+        assert pour["volume_remaining_cum"] == 30.0
+
+
+async def _backdate_dispatch(db_session, dispatch_id, minutes):
+    """Move a dispatch's batching time into the past to simulate transit elapsed.
+    db_session shares the client's connection, so the next request sees it."""
+    dispatch = await db_session.get(RMCDispatch, dispatch_id)
+    dispatch.dispatch_time = datetime.now(UTC) - timedelta(minutes=minutes)
+    await db_session.flush()
+
+
+class TestPlacementWindow:
+    """90-minute concrete placement window: a load reaching the gate within the
+    window is admitted; one that took too long is auto-rejected at the scan."""
+
+    async def test_arrival_within_window_is_admitted(self, client, db_session):
+        contractor_token, qe_token, sup_token, pid = (
+            await _project_with_qe_and_supervisor(client, db_session)
+        )
+        refs = await _dispatch_refs(client, contractor_token, qe_token, pid)
+        token = (await _raise_dispatch(client, qe_token, pid, refs)).json()["truck"]["token"]
+        await _fill_truck(client, token)  # dispatch_time = now
+
+        arrived = await client.post(
+            f"{API}/projects/{pid}/gate/{token}/arrive",
+            json={},
+            headers=bearer(sup_token),
+        )
+        assert arrived.status_code == 200, arrived.text
+        body = arrived.json()
+        assert body["truck"]["status"] == "ARRIVED"
+        assert body["placement_window_minutes"] == 90
+        assert body["transit_minutes"] is not None
+        assert body["transit_minutes"] <= 90
+
+    async def test_arrival_past_window_is_auto_rejected(self, client, db_session):
+        contractor_token, qe_token, sup_token, pid = (
+            await _project_with_qe_and_supervisor(client, db_session)
+        )
+        refs = await _dispatch_refs(client, contractor_token, qe_token, pid)
+        created = (await _raise_dispatch(client, qe_token, pid, refs)).json()
+        dispatch_id, token = created["dispatch_id"], created["truck"]["token"]
+        await _fill_truck(client, token)
+        await _backdate_dispatch(db_session, dispatch_id, minutes=120)
+
+        arrived = await client.post(
+            f"{API}/projects/{pid}/gate/{token}/arrive",
+            json={},
+            headers=bearer(sup_token),
+        )
+        assert arrived.status_code == 200, arrived.text
+        body = arrived.json()
+        assert body["truck"]["status"] == "REJECTED"
+        assert "90-minute" in body["truck"]["rejection_reason"]
+        assert body["transit_minutes"] > 90
+
+    async def test_auto_rejected_load_is_not_credited_to_its_pour(
+        self, client, db_session
+    ):
+        contractor_token, qe_token, sup_token, pid = (
+            await _project_with_qe_and_supervisor(client, db_session)
+        )
+        refs = await _dispatch_refs(client, contractor_token, qe_token, pid)  # 30 m³
+        created = (
+            await _raise_dispatch(client, qe_token, pid, refs, volume_ordered=30.0)
+        ).json()
+        dispatch_id, token = created["dispatch_id"], created["truck"]["token"]
+        await _fill_truck(client, token, volume_cum=30.0)
+        await _backdate_dispatch(db_session, dispatch_id, minutes=120)
+
+        await client.post(
+            f"{API}/projects/{pid}/gate/{token}/arrive",
+            json={},
+            headers=bearer(sup_token),
+        )
+        # A window auto-reject can't then be accepted, and nothing is delivered.
+        pour = await _pour_view(client, qe_token, pid, refs["pour_id"])
+        assert pour["status"] == "PLANNED"
+        assert pour["volume_delivered_cum"] == 0.0
+        assert pour["volume_remaining_cum"] == 30.0

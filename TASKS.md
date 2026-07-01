@@ -21,6 +21,15 @@ cleanup debt and deliberately-deferred work. Keep it current as you go.
 
 ## Deferred (needs infra, a decision, or an external dependency)
 
+- [ ] **Automated lab-report reminders (7/14/28-day).** The lab cube-report flow
+      is live (token link → lab submits 7/14/28-day reports → auto-NCR on a failing
+      28-day result). Reminders are **manual** today (the QE clicks "resend report
+      link" per `routers/cube_tests.py::resend_report_link`). Automating the nudge
+      needs a scheduler (APScheduler in-process, or a `scripts/` runner on
+      Task Scheduler/cron) that sweeps samples whose milestone is due and re-emails
+      the lab. `send_lab_report_request_email(..., is_reminder=True)` already exists;
+      only the scheduling layer is missing.
+
 - [ ] **Register/resend rate-limiting by IP.** OTP brute-force cap + 60s resend
       cooldown are done; bombing via *varying* emails still needs request-level
       (IP) throttling middleware (e.g. slowapi/Redis). Out of scope for a code
@@ -34,8 +43,8 @@ cleanup debt and deliberately-deferred work. Keep it current as you go.
       `backend/docs/phase6_analytics_rollup_seam.md`. Build when data volume needs it.
 - [ ] **PDF-driven auto-fill (product vision).** Upload a PDF on a document-bearing
       entity → auto-fill all form fields. Upload button on those entities, never on
-      pours. Mix-design per-record attachment + the full ~16-field form are
-      intentionally left thin until this is built.
+      pours. (The mix-design now carries the full detailed form + a mandatory PDF
+      attachment per record; auto-fill from that PDF is the remaining vision.)
 
 - [ ] **UI component library decision (Radix vs Tailwind+shadcn).** Scoped plan in
       `frontend/react-app/UI_LIBRARY_PLAN.md`. Path A (incremental Radix primitives +
@@ -49,6 +58,17 @@ cleanup debt and deliberately-deferred work. Keep it current as you go.
 - Phase 9 code-review fixes (idempotent apply, schema-drift, unused deps, FE error
   handling) and whole-project hardening (OTP attempt cap + resend cooldown,
   monotonic `age_fraction`, `decode_token` presence check, LIKE-wildcard escaping).
+- **Time/date integrity + 90-min concrete window** (auto-reject a truck whose
+  dispatch→gate time exceeds the IS-456 window; cross-entity date-ordering rules).
+- **RMC-owned, QE-approved mix designs** — the RMC submits the detailed form +
+  mandatory PDF per requested grade via a token link; the QE approves/rejects;
+  the contractor no longer creates mix designs.
+- **Mismatch action-items + QE in-situ slump gate** — supervisor admission is
+  provisional (PENDING_QE); the QE runs the in-situ slump test and accepts/rejects
+  every delivery, with a polled inbox + bell.
+- **Document review** (QE/PM approve/reject each document); mandatory contact email
+  on supplier/lab; mandatory mix-design + lab-report PDFs; all email bodies moved
+  to `app/templates/email/`. **Removed the unused audit-log trail + Audits page.**
 
 ## How to work an item
 

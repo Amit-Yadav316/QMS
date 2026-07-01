@@ -5,6 +5,7 @@ backend, and records a ``master.documents`` row. Reads are project-scoped;
 delete is restricted to the uploader or a project manager.
 """
 
+from datetime import UTC, datetime
 from pathlib import Path
 
 from sqlalchemy import select
@@ -22,7 +23,7 @@ from app.core.storage import make_key, storage
 from app.models.auth import User
 from app.models.master import Document, Project
 from app.repositories.document_repo import DocumentRepository
-from app.schemas.documents import DocumentResponse
+from app.schemas.documents import DocumentResponse, DocumentReview
 
 ALLOWED_EXTENSIONS = {
     ".pdf", ".png", ".jpg", ".jpeg", ".gif", ".webp",
@@ -77,6 +78,22 @@ class DocumentService:
         )
         return self._to_response(doc, {uploader.user_id: uploader.full_name})
 
+    async def review(
+        self, project: Project, document_id: int, data: DocumentReview, user: User
+    ) -> DocumentResponse:
+        """A QE or PM approves / rejects an uploaded document."""
+        doc = await self.get_for_download(project, document_id)
+        doc.approval_status = data.approval_status.value
+        doc.rejection_reason = (
+            data.rejection_reason
+            if data.approval_status.value == "REJECTED"
+            else None
+        )
+        doc.reviewed_by = user.user_id
+        doc.reviewed_at = datetime.now(UTC)
+        await self.session.flush()
+        return self._to_response(doc, await self._uploader_names([doc]))
+
     async def get_for_download(self, project: Project, document_id: int) -> Document:
         doc = await self.repo.get_by(
             Document.document_id == document_id,
@@ -120,5 +137,9 @@ class DocumentService:
             size_bytes=doc.size_bytes,
             uploaded_by=doc.uploaded_by,
             uploaded_by_name=names.get(doc.uploaded_by) if doc.uploaded_by else None,
+            approval_status=doc.approval_status,
+            rejection_reason=doc.rejection_reason,
+            reviewed_by=doc.reviewed_by,
+            reviewed_at=doc.reviewed_at,
             uploaded_at=doc.uploaded_at,
         )

@@ -1,240 +1,180 @@
-import React, { useMemo, useState } from 'react';
+// Analytics — the four IS-456 / IS-10262 statistical charts. Each chart is for a
+// specific thing, so each has its OWN filter row that defaults to a concrete
+// grade / tower / element / batch (no "all" aggregate views).
+
+import React, { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import {
-  Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart,
-  ResponsiveContainer, Tooltip, XAxis, YAxis,
+  Area, Bar, BarChart, CartesianGrid, ComposedChart, Legend, Line, LineChart,
+  ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
 import { Card } from '../../components/ui/Card';
 import { Select } from '../../components/ui/Select';
 import { Input } from '../../components/ui/Input';
 import { useProject } from '../../components/layout/ProjectLayout';
-import { KpiStrip } from '../../components/analytics/KpiStrip';
-import { useAnalyticsQuality, useSupplierScores, useNcrsBySupplier } from '../../queries/analytics';
+import {
+  useDistribution, useRunChart, useStrengthVsAge, useTargetMean,
+} from '../../queries/analytics';
 import { useProjectTowers } from '../../queries/floors';
 import { useGrades } from '../../queries/catalog';
-import type { GradeTrendPoint, QualityFilters } from '../../types/master';
+import { cubeTestsApi } from '../../api/cubeTests';
 import './Analytics.css';
 
-const LINE_COLORS = ['var(--blue)', 'var(--green)', 'var(--amber)', 'var(--red)', '#8b5cf6', '#06b6d4'];
+const n = (v: string): number | undefined => (v ? Number(v) : undefined);
 
-const passRateColor = (rate: number): string =>
-  rate >= 90 ? 'var(--green)' : rate >= 85 ? 'var(--amber)' : 'var(--red)';
+const empty = <p className="text-muted" style={{ fontSize: 14, margin: 0 }}>No cube-test data for this selection yet.</p>;
 
-// Pivot the long-form grade trend ([{period, grade, rate}, …]) into the
-// wide shape recharts wants ([{period, M40: 92, M30: 88}, …]) + the grade set.
-function pivotTrend(rows: GradeTrendPoint[]): { data: Record<string, number | string>[]; grades: string[] } {
-  const grades = [...new Set(rows.map((r) => r.grade_name))].sort();
-  const byPeriod = new Map<string, Record<string, number | string>>();
-  for (const r of rows) {
-    const point = byPeriod.get(r.period) ?? { period: r.period };
-    if (r.pass_rate_pct != null) point[r.grade_name] = r.pass_rate_pct;
-    byPeriod.set(r.period, point);
-  }
-  const data = [...byPeriod.values()].sort((a, b) =>
-    String(a.period).localeCompare(String(b.period)));
-  return { data, grades };
-}
+const filterRow: React.CSSProperties = { display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 12 };
 
 export const Analytics: React.FC = () => {
   const { project } = useProject();
   const pid = project.project_id;
 
-  // Dimension filters (apply to the quality charts only).
-  const [towerId, setTowerId] = useState('ALL');
-  const [gradeId, setGradeId] = useState('ALL');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
-
-  const filters = useMemo<QualityFilters>(() => {
-    const f: QualityFilters = {};
-    if (towerId !== 'ALL') f.tower_id = Number(towerId);
-    if (gradeId !== 'ALL') f.grade_id = Number(gradeId);
-    if (dateFrom) f.date_from = dateFrom;
-    if (dateTo) f.date_to = dateTo;
-    return f;
-  }, [towerId, gradeId, dateFrom, dateTo]);
-
-  // Every chart on this page is driven by the filters: react-query refetches
-  // each query whenever the filters in its key change.
-  const { data: suppliers = [] } = useSupplierScores(pid, filters);
-  const { data: ncrBySupplier = [] } = useNcrsBySupplier(pid, filters);
   const { data: towers = [] } = useProjectTowers(pid);
   const { data: grades = [] } = useGrades();
-  const { data: quality = null } = useAnalyticsQuality(pid, filters);
+  const { data: samples = [] } = useQuery({
+    queryKey: ['cube-samples', pid],
+    queryFn: () => cubeTestsApi.listSamples(pid),
+  });
 
-  const trend = useMemo(() => pivotTrend(quality?.grade_trend ?? []), [quality]);
-  const hasQuality = (quality?.grade_trend.length ?? 0) > 0
-    || (quality?.strength_distribution.length ?? 0) > 0;
+  const gradeOpts = grades.map((g) => ({ label: g.grade_name, value: g.grade_id }));
+  const towerOpts = towers.map((t) => ({ label: t.tower_name, value: t.tower_id }));
+  const sampleOpts = samples.map((s) => ({
+    label: s.sample_reference ?? `Sample #${s.sample_id}`, value: s.sample_id,
+  }));
 
-  // KPI strip, derived from the *filtered* data so it tracks the controls
-  // (the dashboard shows the same strip whole-project). result_breakdown is on
-  // the acceptance basis (one result per cube); avg strength is the test-count-
-  // weighted mean of the per-supplier averages.
-  const kpiItems = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const r of quality?.result_breakdown ?? []) counts.set(r.status, r.count);
-    const testCount = [...counts.values()].reduce((a, b) => a + b, 0);
-    const passCount = counts.get('PASS') ?? 0;
-    const failCount = counts.get('FAIL') ?? 0;
-    const critCount = counts.get('CRITICAL_FAILURE') ?? 0;
-    const passRate = testCount ? Math.round((passCount / testCount) * 1000) / 10 : null;
-    const totalPours = suppliers.reduce((a, s) => a + s.pour_count, 0);
-    const openNcrs = ncrBySupplier.reduce((a, s) => a + s.open_count, 0);
-    const tested = suppliers.filter((s) => s.test_count > 0 && s.avg_strength_mpa != null);
-    const testN = tested.reduce((a, s) => a + s.test_count, 0);
-    const avgStrength = testN
-      ? Math.round((tested.reduce((a, s) => a + (s.avg_strength_mpa as number) * s.test_count, 0) / testN) * 10) / 10
-      : null;
-    return [
-      { label: 'Total Pours', value: totalPours.toLocaleString() },
-      { label: 'Pass Rate', value: passRate != null ? `${passRate}%` : '—', color: 'var(--green)' },
-      { label: 'Avg. Strength', value: avgStrength != null ? `${avgStrength} MPa` : '—' },
-      { label: 'Total Failures', value: String(failCount + critCount), color: 'var(--red)' },
-      { label: 'Critical Failures', value: String(critCount), color: 'var(--amber)' },
-      { label: 'Open NCRs', value: String(openNcrs) },
-    ];
-  }, [quality, suppliers, ncrBySupplier]);
+  // Default every chart to the freshest data — the most recently cast batch that
+  // already has lab results (samples come back cast-date-descending) — mapping its
+  // grade/tower names back to ids. Falls back to the first option otherwise.
+  const recent = samples.find((s) => s.tests.length > 0) ?? samples[0];
+  const recentGradeId = recent ? grades.find((g) => g.grade_name === recent.grade_name)?.grade_id : undefined;
+  const recentTowerId = recent ? towers.find((t) => t.tower_name === recent.tower_name)?.tower_id : undefined;
 
-  // NCRs by supplier, split by status (open / closed) + severity (critical),
-  // worst (most total) first.
-  const ncrChart = useMemo(
-    () =>
-      ncrBySupplier
-        .filter((s) => s.total > 0)
-        .map((s) => ({
-          name: s.supplier_name,
-          Open: s.open_count,
-          Closed: s.closed_count,
-          Critical: s.critical_count,
-        }))
-        .sort((a, b) => (b.Open + b.Closed) - (a.Open + a.Closed)),
-    [ncrBySupplier],
-  );
+  const firstGrade = String(recentGradeId ?? grades[0]?.grade_id ?? '');
+  const firstTower = String(recentTowerId ?? towers[0]?.tower_id ?? '');
+  const firstSample = String(recent?.sample_id ?? '');
 
-  // Supplier performance = pass rate % (acceptance basis), best first. Honours
-  // the same tower / grade / date filters.
-  const supplierPerf = useMemo(
-    () =>
-      suppliers
-        .filter((s) => s.test_count > 0)
-        .map((s) => ({ name: s.supplier_name, rate: s.pass_rate_pct ?? 0 }))
-        .sort((a, b) => b.rate - a.rate),
-    [suppliers],
-  );
+  // ── Per-chart filter state (each defaults to the most recent data) ──
+  const [rG, setRG] = useState(''); const [rT, setRT] = useState('');
+  const [rFrom, setRFrom] = useState(''); const [rTo, setRTo] = useState('');
+  const [dG, setDG] = useState(''); const [dT, setDT] = useState('');
+  const [tT, setTT] = useState('');
+  const [aS, setAS] = useState('');
+
+  const runGrade = rG || firstGrade;
+  const runTower = rT || firstTower;
+  const distGrade = dG || firstGrade;
+  const distTower = dT || firstTower;
+  const targetTower = tT || firstTower;
+  const ageSample = aS || firstSample;
+
+  const { data: run } = useRunChart(pid, { grade_id: n(runGrade), tower_id: n(runTower), date_from: rFrom || undefined, date_to: rTo || undefined });
+  const { data: dist } = useDistribution(pid, { grade_id: n(distGrade), tower_id: n(distTower) });
+  const { data: target } = useTargetMean(pid, { tower_id: n(targetTower) });
+  const { data: age } = useStrengthVsAge(pid, { sample_id: n(ageSample) });
+
+  const runData = (run?.points ?? []).map((p, i) => ({ ...p, idx: i + 1 }));
+  const targetRows = target?.rows ?? [];
 
   return (
     <div className="qms-analytics">
       <div className="qms-analytics-header">
-        <div>
-          <h1 className="qms-page-title-main">Analytics</h1>
-          <p className="qms-page-subtitle">Concrete quality performance across towers &amp; suppliers</p>
-        </div>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-          <Select
-            label="Tower" fullWidth={false} value={towerId}
-            onChange={(e) => setTowerId(e.target.value)}
-            options={[{ label: 'All towers', value: 'ALL' },
-              ...towers.map((t) => ({ label: t.tower_name, value: t.tower_id }))]}
-          />
-          <Select
-            label="Grade" fullWidth={false} value={gradeId}
-            onChange={(e) => setGradeId(e.target.value)}
-            options={[{ label: 'All grades', value: 'ALL' },
-              ...grades.map((g) => ({ label: g.grade_name, value: g.grade_id }))]}
-          />
-          <Input label="From" type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} fullWidth={false} />
-          <Input label="To" type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} fullWidth={false} />
-        </div>
+        <h1 className="qms-page-title-main">Analytics</h1>
+        <p className="qms-page-subtitle">IS 456 / IS 10262 concrete-strength statistics</p>
       </div>
 
-      {/* Summary KPI strip — driven by the filters above */}
-      <KpiStrip items={kpiItems} />
-
-      {!hasQuality && (
-        <Card>
-          <p className="text-muted" style={{ fontSize: 14, margin: 0 }}>
-            No cube-test data matches the current filters yet. Record strength tests
-            (or widen the filters) to populate the quality charts.
-          </p>
-        </Card>
-      )}
-
-      {/* Charts Row 1 — trend + distribution */}
-      <div className="qms-an-grid-2">
-        <Card>
-          <h3 className="qms-chart-heading">Pass Rate Trend by Grade (%)</h3>
-          <ResponsiveContainer width="100%" height={220}>
-            <LineChart data={trend.data}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--gray-100)" />
-              <XAxis dataKey="period" tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
-              <YAxis domain={[0, 100]} tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
-              <Tooltip />
-              <Legend />
-              {trend.grades.map((g, i) => (
-                <Line key={g} type="monotone" dataKey={g} stroke={LINE_COLORS[i % LINE_COLORS.length]} strokeWidth={2} dot={false} connectNulls />
-              ))}
-            </LineChart>
-          </ResponsiveContainer>
-        </Card>
-
-        <Card>
-          <h3 className="qms-chart-heading">Strength Distribution (MPa)</h3>
-          <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={quality?.strength_distribution ?? []}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--gray-100)" />
-              <XAxis dataKey="label" tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
-              <YAxis allowDecimals={false} tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
-              <Tooltip />
-              <Bar dataKey="count" fill="var(--blue)" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </Card>
-      </div>
-
-      {/* NCRs by supplier — open / closed / critical breakdown */}
+      {/* 1 · Quality control run chart */}
       <Card>
-        <h3 className="qms-chart-heading">NCRs by RMC Supplier (open · closed · critical)</h3>
-        {ncrChart.length === 0 ? (
-          <p className="text-muted" style={{ fontSize: 14, margin: 0 }}>
-            No NCRs raised yet — no supplier has a failed cube test.
-          </p>
-        ) : (
+        <h3 className="qms-chart-heading">Quality control run chart</h3>
+        <div style={filterRow}>
+          <Select label="Grade" fullWidth={false} value={runGrade} onChange={(e) => setRG(e.target.value)} options={gradeOpts} />
+          <Select label="Tower" fullWidth={false} value={runTower} onChange={(e) => setRT(e.target.value)} options={towerOpts} />
+          <Input label="From" type="date" fullWidth={false} value={rFrom} onChange={(e) => setRFrom(e.target.value)} />
+          <Input label="To" type="date" fullWidth={false} value={rTo} onChange={(e) => setRTo(e.target.value)} />
+        </div>
+        {runData.length === 0 ? empty : (
           <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={ncrChart}>
+            <LineChart data={runData}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--gray-100)" />
-              <XAxis dataKey="name" tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
-              <YAxis allowDecimals={false} tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
-              <Tooltip />
-              <Legend />
-              <Bar dataKey="Open" name="Open" fill="var(--amber)" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="Closed" name="Closed" fill="var(--green)" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="Critical" name="Critical" fill="var(--red)" radius={[4, 4, 0, 0]} />
-            </BarChart>
+              <XAxis dataKey="idx" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} label={{ value: 'batch (chronological)', position: 'insideBottom', offset: -2, fontSize: 11 }} />
+              <YAxis tick={{ fontSize: 12 }} axisLine={false} tickLine={false} unit=" MPa" />
+              <Tooltip formatter={(v) => `${v} MPa`} labelFormatter={(i) => runData[Number(i) - 1]?.reference ?? runData[Number(i) - 1]?.test_date ?? ''} />
+              {run?.fck != null && <ReferenceLine y={run.fck} stroke="var(--green)" strokeDasharray="4 4" label={{ value: `fck ${run.fck}`, fontSize: 11, fill: 'var(--green)' }} />}
+              {run?.individual_min != null && <ReferenceLine y={run.individual_min} stroke="var(--red)" strokeDasharray="4 4" label={{ value: `min ${run.individual_min}`, fontSize: 11, fill: 'var(--red)' }} />}
+              {run?.target_mean != null && <ReferenceLine y={run.target_mean} stroke="var(--blue)" strokeDasharray="4 4" label={{ value: `target ${run.target_mean}`, fontSize: 11, fill: 'var(--blue)' }} />}
+              <Line type="monotone" dataKey="observed_mpa" name="Observed" stroke="var(--blue)" strokeWidth={2} dot={{ r: 3 }} />
+            </LineChart>
           </ResponsiveContainer>
         )}
       </Card>
 
-      {/* Supplier performance comparison (pass rate %) — last on the page */}
+      <div className="qms-an-grid-2">
+        {/* 2 · Normal distribution curve */}
+        <Card>
+          <h3 className="qms-chart-heading">Normal distribution {dist?.mean != null ? `(X̄ ${dist.mean}, S ${dist.std_dev}, n ${dist.sample_count})` : ''}</h3>
+          <div style={filterRow}>
+            <Select label="Grade" fullWidth={false} value={distGrade} onChange={(e) => setDG(e.target.value)} options={gradeOpts} />
+            <Select label="Tower" fullWidth={false} value={distTower} onChange={(e) => setDT(e.target.value)} options={towerOpts} />
+          </div>
+          {(dist?.curve.length ?? 0) === 0 ? (
+            <p className="text-muted" style={{ fontSize: 14, margin: 0 }}>Need at least two results to draw the curve.</p>
+          ) : (
+            <ResponsiveContainer width="100%" height={220}>
+              <ComposedChart data={dist!.curve}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--gray-100)" />
+                <XAxis dataKey="x" type="number" domain={['dataMin', 'dataMax']} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} unit=" MPa" />
+                <YAxis tick={false} axisLine={false} tickLine={false} width={8} />
+                <Tooltip formatter={(v) => Number(v).toFixed(4)} labelFormatter={(x) => `${x} MPa`} />
+                <Area type="monotone" dataKey="y" stroke="var(--blue)" fill="var(--blue)" fillOpacity={0.12} strokeWidth={2} />
+                {dist?.fck != null && <ReferenceLine x={dist.fck} stroke="var(--red)" strokeDasharray="4 4" label={{ value: `fck ${dist.fck}`, fontSize: 11, fill: 'var(--red)' }} />}
+                {dist?.mean != null && <ReferenceLine x={dist.mean} stroke="var(--green)" strokeDasharray="4 4" label={{ value: 'X̄', fontSize: 11, fill: 'var(--green)' }} />}
+              </ComposedChart>
+            </ResponsiveContainer>
+          )}
+        </Card>
+
+        {/* 3 · Target mean strength bar */}
+        <Card>
+          <h3 className="qms-chart-heading">Target mean vs achieved (per grade)</h3>
+          <div style={filterRow}>
+            <Select label="Tower" fullWidth={false} value={targetTower} onChange={(e) => setTT(e.target.value)} options={towerOpts} />
+          </div>
+          {targetRows.length === 0 ? empty : (
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={targetRows}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--gray-100)" />
+                <XAxis dataKey="grade_name" tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 12 }} axisLine={false} tickLine={false} unit=" MPa" />
+                <Tooltip formatter={(v) => `${v} MPa`} />
+                <Legend />
+                <Bar dataKey="target_mean" name="Target mean (RMC design)" fill="var(--blue)" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="actual_mean" name="Achieved average" fill="var(--green)" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </Card>
+      </div>
+
+      {/* 4 · Compressive strength vs age (per batch) */}
       <Card>
-        <h3 className="qms-chart-heading">Supplier Performance Comparison (pass rate %)</h3>
-        {supplierPerf.length === 0 ? (
-          <p className="text-muted" style={{ fontSize: 14, margin: 0 }}>
-            {suppliers.length === 0
-              ? 'No suppliers have poured on this project yet.'
-              : 'No cube tests match the current filters.'}
-          </p>
+        <h3 className="qms-chart-heading">Compressive strength vs age {age?.grade_name ? `— ${age.grade_name}` : ''}</h3>
+        <div style={filterRow}>
+          <Select label="Batch (lab reference)" fullWidth={false} value={ageSample} onChange={(e) => setAS(e.target.value)}
+            options={sampleOpts.length ? sampleOpts : [{ label: 'No batches yet', value: '' }]} />
+        </div>
+        {(age?.points.length ?? 0) === 0 ? (
+          <p className="text-muted" style={{ fontSize: 14, margin: 0 }}>No 7/14/28-day results for this batch yet.</p>
         ) : (
           <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={supplierPerf}>
+            <LineChart data={age!.points}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--gray-100)" />
-              <XAxis dataKey="name" tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
-              <YAxis domain={[0, 100]} tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
-              <Tooltip />
-              <Bar dataKey="rate" name="Pass rate %" radius={[4, 4, 0, 0]}>
-                {supplierPerf.map((s, i) => (
-                  <Cell key={i} fill={passRateColor(s.rate)} />
-                ))}
-              </Bar>
-            </BarChart>
+              <XAxis dataKey="test_age_days" tick={{ fontSize: 12 }} axisLine={false} tickLine={false} unit=" d" />
+              <YAxis tick={{ fontSize: 12 }} axisLine={false} tickLine={false} unit=" MPa" />
+              <Tooltip formatter={(v) => `${v} MPa`} labelFormatter={(d) => `${d}-day`} />
+              <Legend />
+              <Line type="monotone" dataKey="observed_mpa" name="Observed" stroke="var(--blue)" strokeWidth={2} dot={{ r: 3 }} />
+              <Line type="monotone" dataKey="required_mpa" name="Required" stroke="var(--gray-400)" strokeDasharray="4 4" strokeWidth={2} dot={false} connectNulls />
+            </LineChart>
           </ResponsiveContainer>
         )}
       </Card>

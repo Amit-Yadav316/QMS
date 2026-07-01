@@ -9,7 +9,6 @@ import {
   Link as LinkIcon,
   Scan,
   AlertTriangle,
-  CheckSquare,
   Truck,
   Send,
   Building,
@@ -21,8 +20,12 @@ import {
   Layers,
   Building2,
   FlaskConical,
+  ClipboardCheck,
+  Bell,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
+import { useQEInboxCount } from '../../queries/qeInbox';
+import { useAlertCount } from '../../queries/alerts';
 import { initials, roleLabel } from '../../lib/initials';
 import './Sidebar.css';
 
@@ -42,7 +45,18 @@ export const Sidebar: React.FC = () => {
     user?.role === 'CONTRACTOR_ADMIN' || user?.role === 'CONTRACTOR_USER';
   // Operational actions are role-specific.
   const isQualityEngineer = user?.role === 'QUALITY_ENGINEER';
+  const isProjectManager = user?.role === 'PROJECT_MANAGER';
   const isSupervisor = user?.role === 'SUPERVISOR';
+
+  // QE in-situ inbox badge (PENDING_QE deliveries), polled.
+  const { data: inbox } = useQEInboxCount(Number(rawId), inProject && isQualityEngineer);
+  const inboxCount = inbox?.count ?? 0;
+
+  // Quality-alert badge (QE + PM), polled.
+  const { data: alertCount } = useAlertCount(
+    Number(rawId), inProject && (isQualityEngineer || isProjectManager),
+  );
+  const alerts = alertCount?.count ?? 0;
 
   const handleLogout = async () => {
     await logout();
@@ -91,6 +105,12 @@ export const Sidebar: React.FC = () => {
           {isQualityEngineer && (
             <NavLink to={`${base}/cube`} className={item}><TestTube size={18} /> Cube tests</NavLink>
           )}
+          {isQualityEngineer && (
+            <NavLink to={`${base}/qe-inbox`} className={item}>
+              <ClipboardCheck size={18} /> In-situ inbox
+              {inboxCount > 0 && <span className="qms-nav-badge">{inboxCount}</span>}
+            </NavLink>
+          )}
           <NavLink to={`${base}/trace`} className={item}><LinkIcon size={18} /> Traceability</NavLink>
           {isSupervisor && (
             <NavLink to={`${base}/gate`} className={item}><Scan size={18} /> Gate scan</NavLink>
@@ -98,7 +118,12 @@ export const Sidebar: React.FC = () => {
 
           <div className="qms-nav-section">Quality</div>
           <NavLink to={`${base}/ncr`} className={item}><AlertTriangle size={18} /> NCR</NavLink>
-          <NavLink to={`${base}/audits`} className={item}><CheckSquare size={18} /> Audits</NavLink>
+          {(isQualityEngineer || isProjectManager) && (
+            <NavLink to={`${base}/alerts`} className={item}>
+              <Bell size={18} /> Alerts
+              {alerts > 0 && <span className="qms-nav-badge">{alerts}</span>}
+            </NavLink>
+          )}
 
           <div className="qms-nav-section">Setup</div>
           <NavLink to={`${base}/team`} className={item}><Users size={18} /> Team</NavLink>

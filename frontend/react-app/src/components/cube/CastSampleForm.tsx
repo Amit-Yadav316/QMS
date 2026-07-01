@@ -36,7 +36,7 @@ export const CastSampleForm: React.FC<CastSampleFormProps> = ({ pid, pours, labs
     register, handleSubmit, formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { pour_id: '', sample_reference: '', cast_date: '', no_of_cubes: '3', lab_id: '' },
+    defaultValues: { pour_id: '', sample_reference: '', cast_date: '', no_of_cubes: '9', lab_id: '' },
   });
 
   const onSubmit = async (v: FormValues) => {
@@ -93,6 +93,7 @@ export const CastSampleForm: React.FC<CastSampleFormProps> = ({ pid, pours, labs
             type="number"
             min="1"
             required
+            placeholder="9 (three sets for 7/14/28-day)"
             error={errors.no_of_cubes?.message}
             {...register('no_of_cubes')}
           />
@@ -101,10 +102,14 @@ export const CastSampleForm: React.FC<CastSampleFormProps> = ({ pid, pours, labs
             {...register('lab_id')}
             options={[
               { label: 'Not assigned yet', value: '' },
-              ...labs.map((l) => ({ label: l.lab_name, value: l.lab_id })),
+              ...labs.filter((l) => !l.is_blocked).map((l) => ({ label: l.lab_name, value: l.lab_id })),
             ]}
           />
         </div>
+        <p className="qms-text-sm text-muted qms-cube-record-note">
+          Choosing a lab with a contact email emails it the report link, so it can
+          submit the 7/14/28-day strength reports directly.
+        </p>
         <div className="qms-form-actions qms-cube-actions">
           <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
           <Button type="submit" variant="primary" disabled={cast.isPending}>

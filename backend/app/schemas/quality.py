@@ -25,7 +25,7 @@ class CubeSampleCreate(BaseModel):
 
     sample_reference: str | None = None
     cast_date: date
-    no_of_cubes: int = 3
+    no_of_cubes: int = 9  # three sets of 3 for the 7/14/28-day tests
     lab_id: int | None = None
     lab_dispatch_date: date | None = None
     expected_result_date: date | None = None
@@ -60,7 +60,12 @@ class CubeTestResponse(BaseModel):
     lab_id: int | None = None
     lab_name: str | None = None
     lab_report_reference: str | None = None
-    # Populated when this test auto-raised an NCR (FAIL / CRITICAL_FAILURE).
+    # The lab's uploaded PDF report for this milestone, if any (download via the
+    # project document endpoint). ``submitted_by_lab`` is true for results that
+    # came through the tokenised lab flow rather than a logged-in user.
+    report_document_id: int | None = None
+    submitted_by_lab: bool = False
+    # Populated when this test auto-raised an NCR (a failing 28-day result).
     ncr_id: int | None = None
     ncr_number: str | None = None
     created_at: datetime
@@ -77,6 +82,11 @@ class CubeSampleResponse(BaseModel):
     lab_dispatch_date: date | None = None
     expected_result_date: date | None = None
     lab_dispatch_notes: str | None = None
+    # Lab report token flow: whether the report link has been emailed, and the
+    # testing day the lab established (anchors the 7/14/28-day schedule).
+    report_link_sent: bool = False
+    cube_received_on: date | None = None
+    testing_started_on: date | None = None
     created_at: datetime
     # Denormalised pour context for the cube-results table.
     pour_reference: str | None = None

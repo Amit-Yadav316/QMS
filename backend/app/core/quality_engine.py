@@ -31,6 +31,103 @@ DEFAULT_AGE_FRACTIONS: dict[int, float] = {3: 0.40, 7: 0.65, 14: 0.90, 28: 1.0}
 # concrete is well short of spec, not a marginal miss.
 CRITICAL_FRACTION = 0.85
 
+# IS 10262 assumed standard deviation (N/mm²) by characteristic strength, used
+# when there isn't enough site data (< ~30 results) to compute σ reliably.
+ASSUMED_STD_DEV: dict[int, float] = {
+    10: 3.5, 15: 3.5, 20: 4.0, 25: 4.0, 30: 5.0,
+    35: 5.0, 40: 5.0, 45: 5.0, 50: 5.0, 55: 5.0, 60: 5.0,
+}
+
+
+def assumed_std_dev(fck: float) -> float:
+    """IS 10262 assumed σ for the characteristic strength at/below ``fck``."""
+    keys = [k for k in ASSUMED_STD_DEV if k <= fck]
+    return ASSUMED_STD_DEV[max(keys)] if keys else ASSUMED_STD_DEV[min(ASSUMED_STD_DEV)]
+
+
+def target_mean_strength(fck: float, std_dev: float | None = None) -> float:
+    """IS 10262 target mean strength = fck + 1.65·S (S = assumed σ if not given)."""
+    s = std_dev if std_dev is not None else assumed_std_dev(fck)
+    return round(float(fck) + 1.65 * float(s), 2)
+
+
+# ── IS 456 Clause 16 acceptance criteria (used by the alerting layer) ──────────
+
+INDIVIDUAL_MARGIN = 3.0  # an individual test must be ≥ fck − 3
+GROUP_MARGIN = 3.0       # the mean of 4 must be ≥ fck + 3 …
+GROUP_STD_FACTOR = 0.825  # … or fck + 0.825·S, whichever is greater
+
+
+def individual_ok(observed: float, fck: float) -> bool:
+    """IS 456: an individual result is acceptable if ≥ fck − 3 N/mm²."""
+    return float(observed) >= float(fck) - INDIVIDUAL_MARGIN
+
+
+def group_min_mean(fck: float, std_dev: float | None = None) -> float:
+    """IS 456 acceptance floor for the mean of 4 consecutive results —
+    max(fck + 3, fck + 0.825·S)."""
+    s = std_dev if std_dev is not None else assumed_std_dev(fck)
+    return round(
+        max(float(fck) + GROUP_MARGIN, float(fck) + GROUP_STD_FACTOR * float(s)), 2
+    )
+
+
+def group_ok(mean_of_four: float, fck: float, std_dev: float | None = None) -> bool:
+    return float(mean_of_four) >= group_min_mean(fck, std_dev)
+
+
+def evaluate_strength_alert(
+    observed: float,
+    fck: float,
+    recent_observed: list[float],
+    std_dev: float | None = None,
+) -> tuple[str, str, str] | None:
+    """Grade a new 28-day result against IS 456 individual + group criteria and
+    return ``(level, category, message)`` for an alert, or ``None`` when it's
+    comfortably clear. ``recent_observed`` is the run of same-grade individual
+    results (most recent last), including this one.
+
+    Encodes the action plan: an individual below fck−3 is a hard failure
+    (CRITICAL); an individual that passes but drags the 4-sample moving average
+    below the acceptance floor is a drift WARNING (review plant, notify RMC); an
+    individual below the characteristic strength (but above the minimum) is an
+    early trend warning to increase vigilance.
+    """
+    observed = float(observed)
+    fck = float(fck)
+
+    if observed < fck - INDIVIDUAL_MARGIN:
+        return (
+            "CRITICAL",
+            "STRENGTH_INDIVIDUAL",
+            f"Individual 28-day result {round(observed, 2)} MPa is below the IS 456 "
+            f"minimum of {round(fck - INDIVIDUAL_MARGIN, 2)} MPa (fck − 3).",
+        )
+
+    window = [float(x) for x in recent_observed][-4:]
+    if len(window) >= 4:
+        avg = sum(window) / 4
+        floor = group_min_mean(fck, std_dev)
+        if avg < floor:
+            return (
+                "WARNING",
+                "STRENGTH_GROUP",
+                f"The 4-sample moving average {round(avg, 2)} MPa is below the IS 456 "
+                f"acceptance floor {floor} MPa — production is drifting toward failure. "
+                "Review the RMC plant and notify them; increase testing frequency.",
+            )
+
+    if observed < fck:
+        return (
+            "WARNING",
+            "TREND",
+            f"Individual 28-day result {round(observed, 2)} MPa is below the "
+            f"characteristic strength {round(fck, 2)} MPa (though within the "
+            f"{round(fck - INDIVIDUAL_MARGIN, 2)} MPa minimum). Increase vigilance on "
+            "the next deliveries.",
+        )
+    return None
+
 
 def age_fraction(test_age_days: int) -> float:
     """The fraction of 28-day strength expected at ``test_age_days``.

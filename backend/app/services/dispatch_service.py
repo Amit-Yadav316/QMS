@@ -13,19 +13,32 @@ is scoped to a project through its pour (PourDispatchLink → Pour).
 """
 
 import logging
+import re
 from datetime import UTC, datetime, timedelta
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.core.email import send_truck_dispatch_email, send_truck_result_email
-from app.core.exceptions import NotFoundError, PermissionDeniedError, TruckStateError
+from app.core.exceptions import (
+    EntityBlockedError,
+    NotFoundError,
+    PermissionDeniedError,
+    TruckStateError,
+)
 from app.core.security import create_invitation_token
 from app.models.auth import User
-from app.models.master import Grade, Project, Supplier
+from app.models.master import Grade, MixApprovalStatus, MixDesign, Project, Supplier
 from app.models.transaction import (
+    ActionItem,
+    ActionItemStatus,
+    ActionResolution,
+    InsituResult,
+    InsituTest,
     Pour,
     PourDispatchLink,
+    PourStatus,
     RMCDispatch,
     TruckDispatch,
     TruckStatus,
@@ -33,9 +46,14 @@ from app.models.transaction import (
 from app.repositories.dispatch_repo import DispatchRepository, TruckRepository
 from app.repositories.pour_repo import PourRepository
 from app.schemas.transaction import (
+    ActionItemResponse,
+    ActionRequired,
     DispatchCreate,
     DispatchResponse,
     GateTruckView,
+    InsituSubmit,
+    InsituTestInfo,
+    QEReviewItem,
     TruckActionResult,
     TruckArrive,
     TruckFillSubmit,
@@ -47,6 +65,11 @@ from app.schemas.transaction import (
 logger = logging.getLogger(__name__)
 
 TOKEN_TTL_HOURS = 24
+
+# IS-456 concrete placement window: ready-mix concrete should be placed within
+# 90 minutes of batching/dispatch, before it starts its initial set. A truck that
+# reaches the gate past this window is auto-rejected at the arrival scan.
+PLACEMENT_WINDOW_MINUTES = 90
 
 
 async def _try_send(send, *, link: str, recipient: str, **kwargs) -> None:
@@ -79,6 +102,8 @@ class DispatchService:
         supplier = await self.session.get(Supplier, data.supplier_id)
         if not supplier or supplier.project_id != pid:
             raise NotFoundError("Supplier")
+        if supplier.is_blocked:
+            raise EntityBlockedError("supplier", supplier.block_reason)
         if not supplier.contact_email:
             raise PermissionDeniedError(
                 "This supplier has no contact email — confirm the supplier "
@@ -231,10 +256,26 @@ class DispatchService:
             raise TruckStateError(
                 "Only a truck filled by the supplier can be scanned in at the gate"
             )
-        truck.status = TruckStatus.ARRIVED
-        truck.arrived_at = datetime.now(UTC)
+        now = datetime.now(UTC)
+        truck.arrived_at = now
         if data.slump_at_site_mm is not None:
             dispatch.slump_at_site_mm = data.slump_at_site_mm
+
+        # 90-minute concrete placement window: a load that took longer than the
+        # window from dispatch to the gate has likely begun setting and is
+        # auto-rejected — the supervisor never gets to accept it.
+        transit = self._transit_minutes(dispatch.dispatch_time, now)
+        if transit is not None and transit > PLACEMENT_WINDOW_MINUTES:
+            truck.status = TruckStatus.REJECTED
+            truck.rejection_reason = (
+                f"Auto-rejected: {transit} min from dispatch to gate exceeds the "
+                f"{PLACEMENT_WINDOW_MINUTES}-minute concrete placement window."
+            )
+            await self.session.flush()
+            await self._notify_result(project, dispatch, truck, "REJECTED")
+            return await self._gate_view(project, dispatch, truck)
+
+        truck.status = TruckStatus.ARRIVED
         await self.session.flush()
         return await self._gate_view(project, dispatch, truck)
 
@@ -245,19 +286,137 @@ class DispatchService:
         if truck.status != TruckStatus.ARRIVED:
             raise TruckStateError("Scan the truck in at the gate before accepting it")
 
-        truck.status = TruckStatus.ACCEPTED
-        truck.accepted_at = datetime.now(UTC)
+        # Supervisor admission is **provisional** — the QE must sign off with an
+        # in-situ slump test before the load is finally ACCEPTED and credited to
+        # the pour. The truck waits in the QE's inbox as PENDING_QE.
+        truck.status = TruckStatus.PENDING_QE
         truck.reviewed_by = user.user_id
-
-        received = truck.volume_cum or 0
-        dispatch.volume_received_cum = received
-        ordered = dispatch.volume_ordered_cum or 0
-        dispatch.volume_remaining_cum = max(ordered - received, 0)
-        dispatch.is_complete = received >= ordered
         await self.session.flush()
-
-        await self._notify_result(project, dispatch, truck, "ACCEPTED")
         return await self._gate_view(project, dispatch, truck)
+
+    async def raise_action(
+        self, project: Project, token: str, data: ActionRequired, user: User
+    ) -> GateTruckView:
+        """Supervisor flags a mismatch on an admitted truck — moves it into the
+        QE's inbox (PENDING_QE) with the mismatch reason + message."""
+        truck, dispatch = await self._truck_in_project(project, token)
+        if truck.status not in (TruckStatus.ARRIVED, TruckStatus.PENDING_QE):
+            raise TruckStateError(
+                "Only a truck scanned in at the gate can be flagged for the QE"
+            )
+        truck.status = TruckStatus.PENDING_QE
+        truck.reviewed_by = user.user_id
+        self.session.add(
+            ActionItem(
+                project_id=project.project_id,
+                dispatch_id=dispatch.dispatch_id,
+                reason=data.reason,
+                message=data.message,
+                status=ActionItemStatus.OPEN,
+                raised_by=user.user_id,
+            )
+        )
+        await self.session.flush()
+        return await self._gate_view(project, dispatch, truck)
+
+    async def record_insitu(
+        self, project: Project, dispatch_id: int, data: InsituSubmit, user: User
+    ) -> GateTruckView:
+        """QE runs the in-situ slump-cone test on a PENDING_QE delivery, then
+        accepts (slump must PASS) or rejects it. Acceptance is the only path that
+        credits the pour; rejection notifies the RMC."""
+        dispatch = await self.repo.get_in_project(dispatch_id, project.project_id)
+        if not dispatch:
+            raise NotFoundError("Dispatch")
+        truck = await self.trucks.get_for_dispatch(dispatch_id)
+        if not truck or truck.status != TruckStatus.PENDING_QE:
+            raise TruckStateError("This delivery isn't awaiting a QE in-situ check")
+
+        target = await self._target_slump(dispatch)
+        result = self._grade_slump(target, data.measured_slump_mm)
+        self.session.add(
+            InsituTest(
+                dispatch_id=dispatch_id,
+                target_slump_mm=target,
+                measured_slump_mm=data.measured_slump_mm,
+                result=result,
+                notes=data.notes,
+                tested_by=user.user_id,
+            )
+        )
+        dispatch.slump_at_site_mm = data.measured_slump_mm
+
+        if data.decision == ActionResolution.APPROVED:
+            if result == InsituResult.FAIL:
+                raise TruckStateError(
+                    "The in-situ slump is outside the mix design range — this "
+                    "load can't be approved. Reject it instead."
+                )
+            truck.status = TruckStatus.ACCEPTED
+            truck.accepted_at = datetime.now(UTC)
+            truck.reviewed_by = user.user_id
+            received = truck.volume_cum or 0
+            dispatch.volume_received_cum = received
+            ordered = dispatch.volume_ordered_cum or 0
+            dispatch.volume_remaining_cum = max(ordered - received, 0)
+            dispatch.is_complete = received >= ordered
+            await self.session.flush()
+            await self._apply_pour_progress(dispatch_id)
+            await self._notify_result(project, dispatch, truck, "ACCEPTED")
+        else:
+            truck.status = TruckStatus.REJECTED
+            truck.rejection_reason = (
+                data.rejection_reason or "Rejected by the QE after the in-situ test"
+            )
+            truck.reviewed_by = user.user_id
+            await self.session.flush()
+            await self._notify_result(project, dispatch, truck, "REJECTED")
+
+        await self._resolve_action_items(dispatch_id, data.decision, user)
+        return await self._gate_view(project, dispatch, truck)
+
+    # ── QE inbox ───────────────────────────────────────────────────────────────
+
+    async def qe_inbox(self, project: Project) -> list[QEReviewItem]:
+        """Deliveries awaiting the QE's in-situ sign-off (PENDING_QE)."""
+        dispatches = await self.repo.list_for_project(project.project_id)
+        items: list[QEReviewItem] = []
+        for dispatch in dispatches:
+            truck = await self.trucks.get_for_dispatch(dispatch.dispatch_id)
+            if not truck or truck.status != TruckStatus.PENDING_QE:
+                continue
+            supplier = await self.session.get(Supplier, dispatch.supplier_id)
+            grade = await self.session.get(Grade, dispatch.grade_id)
+            pour_id = await self.repo.pour_id_for(dispatch.dispatch_id)
+            pour = await self.session.get(Pour, pour_id) if pour_id else None
+            items.append(
+                QEReviewItem(
+                    dispatch_id=dispatch.dispatch_id,
+                    token=truck.token,
+                    supplier_name=supplier.supplier_name if supplier else None,
+                    grade_name=grade.grade_name if grade else None,
+                    target_slump_mm=await self._target_slump(dispatch),
+                    slump_at_site_mm=dispatch.slump_at_site_mm,
+                    volume_cum=truck.volume_cum,
+                    pour_reference=pour.pour_reference if pour else None,
+                    action_item=await self._open_action_item(dispatch.dispatch_id),
+                    created_at=truck.arrived_at or truck.filled_at or dispatch.created_at,
+                )
+            )
+        return items
+
+    async def qe_inbox_count(self, project: Project) -> int:
+        res = await self.session.execute(
+            select(TruckDispatch.dispatch_token_id)
+            .join(RMCDispatch, RMCDispatch.dispatch_id == TruckDispatch.dispatch_id)
+            .join(PourDispatchLink, PourDispatchLink.dispatch_id == RMCDispatch.dispatch_id)
+            .join(Pour, Pour.pour_id == PourDispatchLink.pour_id)
+            .where(
+                Pour.project_id == project.project_id,
+                TruckDispatch.status == TruckStatus.PENDING_QE,
+            )
+        )
+        return len(res.all())
 
     async def reject(
         self, project: Project, token: str, user: User, data: TruckReject
@@ -276,9 +435,122 @@ class DispatchService:
 
     # ── Internals ───────────────────────────────────────────────────────────
 
+    async def _apply_pour_progress(self, dispatch_id: int) -> None:
+        """Roll the just-accepted delivery up to its pour: mark it IN_PROGRESS on
+        the first delivery and auto-COMPLETE once the planned volume is delivered.
+        A short delivery (e.g. a slump rejection) leaves the pour open for the QE."""
+        pour_id = await self.repo.pour_id_for(dispatch_id)
+        if pour_id is None:
+            return
+        pour = await self.session.get(Pour, pour_id)
+        if not pour or pour.status == PourStatus.COMPLETED:
+            return
+
+        delivered = await self.repo.delivered_for_pour(pour_id)
+        planned = float(pour.volume_cum) if pour.volume_cum is not None else None
+        if planned is not None and delivered + 0.01 >= planned:
+            pour.status = PourStatus.COMPLETED
+            pour.completed_at = datetime.now(UTC)
+            pour.volume_actual_cum = delivered
+        elif pour.status == PourStatus.PLANNED:
+            pour.status = PourStatus.IN_PROGRESS
+        await self.session.flush()
+
+    async def _target_slump(self, dispatch: RMCDispatch) -> str | None:
+        """The slump range from the APPROVED mix design for this delivery's
+        supplier + grade — the in-situ acceptance criterion."""
+        res = await self.session.execute(
+            select(MixDesign.slump_range_mm)
+            .where(
+                MixDesign.supplier_id == dispatch.supplier_id,
+                MixDesign.grade_id == dispatch.grade_id,
+                MixDesign.approval_status == MixApprovalStatus.APPROVED,
+            )
+            .limit(1)
+        )
+        return res.scalar_one_or_none()
+
+    @staticmethod
+    def _parse_slump_range(text: str | None) -> tuple[float, float] | None:
+        if not text:
+            return None
+        nums = re.findall(r"\d+(?:\.\d+)?", text)
+        if len(nums) >= 2:
+            return float(nums[0]), float(nums[1])
+        if len(nums) == 1:
+            return float(nums[0]), float(nums[0])
+        return None
+
+    @classmethod
+    def _grade_slump(cls, target: str | None, measured: float) -> InsituResult:
+        rng = cls._parse_slump_range(target)
+        if rng is None:
+            return InsituResult.PASS  # no target recorded → QE's decision stands
+        lo, hi = rng
+        return InsituResult.PASS if lo <= measured <= hi else InsituResult.FAIL
+
+    async def _resolve_action_items(
+        self, dispatch_id: int, decision: ActionResolution, user: User
+    ) -> None:
+        res = await self.session.execute(
+            select(ActionItem).where(
+                ActionItem.dispatch_id == dispatch_id,
+                ActionItem.status == ActionItemStatus.OPEN,
+            )
+        )
+        for item in res.scalars().all():
+            item.status = ActionItemStatus.RESOLVED
+            item.resolution = decision
+            item.resolved_by = user.user_id
+            item.resolved_at = datetime.now(UTC)
+        await self.session.flush()
+
+    async def _open_action_item(self, dispatch_id: int) -> ActionItemResponse | None:
+        res = await self.session.execute(
+            select(ActionItem)
+            .where(
+                ActionItem.dispatch_id == dispatch_id,
+                ActionItem.status == ActionItemStatus.OPEN,
+            )
+            .order_by(ActionItem.created_at.desc())
+            .limit(1)
+        )
+        item = res.scalar_one_or_none()
+        return ActionItemResponse.model_validate(item, from_attributes=True) if item else None
+
+    async def _latest_insitu(self, dispatch_id: int) -> InsituTestInfo | None:
+        res = await self.session.execute(
+            select(InsituTest)
+            .where(InsituTest.dispatch_id == dispatch_id)
+            .order_by(InsituTest.tested_at.desc())
+            .limit(1)
+        )
+        test = res.scalar_one_or_none()
+        if not test:
+            return None
+        return InsituTestInfo(
+            measured_slump_mm=float(test.measured_slump_mm),
+            target_slump_mm=test.target_slump_mm,
+            result=test.result,
+            notes=test.notes,
+            tested_at=test.tested_at,
+        )
+
     @staticmethod
     def _expired(truck: TruckDispatch) -> bool:
         return truck.expires_at < datetime.now(UTC)
+
+    @staticmethod
+    def _transit_minutes(
+        dispatch_time: datetime | None, reference: datetime
+    ) -> int | None:
+        """Whole minutes from dispatch to ``reference`` (arrival or now). ``None``
+        when the load hasn't been dispatched yet (no batching time recorded)."""
+        if dispatch_time is None:
+            return None
+        if dispatch_time.tzinfo is None:
+            dispatch_time = dispatch_time.replace(tzinfo=UTC)
+        return max(int((reference - dispatch_time).total_seconds() // 60), 0)
 
     async def _truck_by_token(self, token: str) -> TruckDispatch:
         truck = await self.trucks.get_by_token(token)
@@ -373,6 +645,7 @@ class DispatchService:
     ) -> GateTruckView:
         supplier = await self.session.get(Supplier, dispatch.supplier_id)
         grade = await self.session.get(Grade, dispatch.grade_id)
+        reference = truck.arrived_at or datetime.now(UTC)
         return GateTruckView(
             dispatch_id=dispatch.dispatch_id,
             project_name=project.project_name,
@@ -380,5 +653,10 @@ class DispatchService:
             grade_name=grade.grade_name if grade else None,
             volume_ordered_cum=dispatch.volume_ordered_cum,
             slump_at_site_mm=dispatch.slump_at_site_mm,
+            dispatch_time=dispatch.dispatch_time,
+            transit_minutes=self._transit_minutes(dispatch.dispatch_time, reference),
+            placement_window_minutes=PLACEMENT_WINDOW_MINUTES,
+            target_slump_mm=await self._target_slump(dispatch),
+            insitu=await self._latest_insitu(dispatch.dispatch_id),
             truck=self._truck_info(truck),
         )

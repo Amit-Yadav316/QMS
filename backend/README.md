@@ -56,11 +56,11 @@ backend/
 | Schema | Contents |
 |--------|----------|
 | `auth` | organisations, users, project_team, org_invitations, token_blacklist |
-| `master` | projects, towers, floors, components, grades, suppliers, mix_designs, testing_labs |
-| `master` (cont.) | + documents (per-project file store) |
-| `transaction` | pours, rmc_dispatches, truck_dispatches, pour_dispatch_links, cube_samples |
+| `master` | projects, towers, floors, components, grades, suppliers, supplier_required_grades, mix_designs, testing_labs |
+| `master` (cont.) | + documents (per-project file store, QE/PM-reviewed) |
+| `transaction` | pours, rmc_dispatches, truck_dispatches, pour_dispatch_links, cube_samples, action_items, insitu_tests |
 | `quality` | cube_tests, ncrs, penalties, corrective_actions, ai_suggestions, ncr_embeddings |
-| `audit` | audit_logs, ingestion_logs, embeddings |
+| `audit` | ingestion_logs, embeddings |
 
 ## Setup
 
@@ -190,7 +190,7 @@ Project-scoped endpoints (visibility + management are scoped per project):
 | Catalog/setup | `/grades`, `/components`, `.../towers`, `.../floors`, `.../mix-designs` | viewer / managers |
 | Pours | `GET/POST .../pours`, `PATCH .../pours/{id}/complete` | QE |
 | RMC dispatch | `POST .../dispatches` (QE) · public `/external/dispatch?token=` (supplier fill) · `.../gate/{token}` arrive/accept/reject (SUPERVISOR) | mixed |
-| Cube tests | `POST .../pours/{pid}/samples`, `POST .../samples/{sid}/tests` (QE) · `GET .../samples`, `.../ncrs` | QE / viewer |
+| Cube tests | `POST .../pours/{pid}/samples` (QE casts + dispatches to lab) · `POST .../samples/{sid}/report-link`, `.../resend-report-link` (QE) · public `/external/lab-report?token=` (lab submits 7/14/28-day reports) · `GET .../samples`, `.../ncrs` | QE / lab / viewer |
 | NCR lifecycle | `GET .../ncrs[/{id}]` · `PATCH .../ncrs/{id}`, `.../corrective-actions`, `.../penalties` (QE) | viewer / QE |
 | **AI suggestions** | `GET .../ncrs/{id}/ai-suggestion` (viewer) · `POST` generate, `POST .../apply` (QE) | viewer / QE |
 | Analytics | `GET .../analytics/{overview,quality,suppliers}` | viewer |

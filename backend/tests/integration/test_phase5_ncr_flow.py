@@ -24,7 +24,7 @@ async def _open_ncr(client, db_session):
     contractor_token, qe_token, pid, pour_id = await _qe_pour(client, db_session)
     sample_id = (await _cast_sample(client, qe_token, pid, pour_id)).json()["sample_id"]
     test = (
-        await _record_test(client, qe_token, pid, sample_id, observed_strength_mpa=27.0)
+        await _record_test(client, db_session, qe_token, pid, sample_id, observed_strength_mpa=27.0)
     ).json()
     return contractor_token, qe_token, pid, test["ncr_id"]
 

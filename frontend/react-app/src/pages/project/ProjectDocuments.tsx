@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { Upload, Download, Trash2, FileText, Search } from 'lucide-react';
+import { Upload, Download, Trash2, FileText, Search, Check, X } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
 import { Select } from '../../components/ui/Select';
@@ -7,6 +7,7 @@ import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
 import { ErrorBox } from '../../components/ui/ErrorBox';
 import { useProject } from '../../components/layout/ProjectLayout';
+import { useAuth } from '../../hooks/useAuth';
 import { getApiErrorMessage } from '../../api/client';
 import { toast } from '../../lib/toast';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
@@ -14,10 +15,18 @@ import {
   useDeleteDocument,
   useDocuments,
   useDownloadDocument,
+  useReviewDocument,
   useUploadDocument,
 } from '../../queries/documents';
-import type { DocumentResponse } from '../../types/master';
+import type { DocumentApprovalStatus, DocumentResponse } from '../../types/master';
 import './ProjectDocuments.css';
+
+const APPROVAL_VARIANT: Record<DocumentApprovalStatus, 'pass' | 'fail' | 'pending'> = {
+  APPROVED: 'pass', REJECTED: 'fail', PENDING: 'pending',
+};
+const APPROVAL_LABEL: Record<DocumentApprovalStatus, string> = {
+  APPROVED: 'Approved', REJECTED: 'Rejected', PENDING: 'Pending review',
+};
 
 const CATEGORY_OPTIONS = [
   { label: 'No category', value: '' },
@@ -43,11 +52,35 @@ export const ProjectDocuments: React.FC = () => {
   const canManage =
     project.access.can_manage_client_side || project.access.can_manage_contractor_side;
 
+  const { user } = useAuth();
+  const canReview = user?.role === 'QUALITY_ENGINEER' || user?.role === 'PROJECT_MANAGER';
+
   const { data: rows = [], isPending, error: loadError } = useDocuments(pid);
   const upload = useUploadDocument(pid);
   const download = useDownloadDocument(pid);
   const remove = useDeleteDocument(pid);
+  const review = useReviewDocument(pid);
   const confirm = useConfirm();
+
+  const handleReview = async (doc: DocumentResponse, status: DocumentApprovalStatus) => {
+    let reason: string | null = null;
+    if (status === 'REJECTED') {
+      const ok = await confirm({
+        title: 'Reject document?',
+        description: `“${doc.original_filename}” will be marked rejected. Downstream steps can't rely on it until it's approved.`,
+        confirmLabel: 'Reject',
+        danger: true,
+      });
+      if (!ok) return;
+      reason = 'Rejected on review';
+    }
+    try {
+      await review.mutateAsync({ documentId: doc.document_id, data: { approval_status: status, rejection_reason: reason } });
+      toast.success(`Document ${status.toLowerCase()}.`);
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, 'Could not update the document.'));
+    }
+  };
 
   const fileRef = useRef<HTMLInputElement>(null);
   const [search, setSearch] = useState('');
@@ -171,6 +204,7 @@ export const ProjectDocuments: React.FC = () => {
               <tr>
                 <th>Document</th>
                 <th>Category</th>
+                <th>Status</th>
                 <th>Size</th>
                 <th>Uploaded by</th>
                 <th>Date</th>
@@ -179,9 +213,9 @@ export const ProjectDocuments: React.FC = () => {
             </thead>
             <tbody>
               {isPending ? (
-                <tr><td colSpan={6} className="text-muted">Loading…</td></tr>
+                <tr><td colSpan={7} className="text-muted">Loading…</td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={6} className="text-muted">{rows.length === 0 ? 'No documents yet.' : 'No matches.'}</td></tr>
+                <tr><td colSpan={7} className="text-muted">{rows.length === 0 ? 'No documents yet.' : 'No matches.'}</td></tr>
               ) : (
                 filtered.map((d) => (
                   <tr key={d.document_id}>
@@ -195,11 +229,41 @@ export const ProjectDocuments: React.FC = () => {
                       </div>
                     </td>
                     <td>{d.document_type ? <Badge variant="default">{catLabel(d.document_type)}</Badge> : '—'}</td>
+                    <td>
+                      <Badge variant={APPROVAL_VARIANT[d.approval_status]}>{APPROVAL_LABEL[d.approval_status]}</Badge>
+                      {d.approval_status === 'REJECTED' && d.rejection_reason && (
+                        <div className="qms-doc-id text-muted">{d.rejection_reason}</div>
+                      )}
+                    </td>
                     <td>{fmtSize(d.size_bytes)}</td>
                     <td>{d.uploaded_by_name ?? '—'}</td>
                     <td>{fmtDate(d.uploaded_at)}</td>
                     <td>
                       <div className="qms-cell-actions">
+                        {canReview && d.approval_status !== 'APPROVED' && (
+                          <button
+                            type="button"
+                            className="qms-icon-btn"
+                            aria-label={`Approve ${d.original_filename}`}
+                            title="Approve"
+                            disabled={review.isPending}
+                            onClick={() => handleReview(d, 'APPROVED')}
+                          >
+                            <Check size={16} />
+                          </button>
+                        )}
+                        {canReview && d.approval_status !== 'REJECTED' && (
+                          <button
+                            type="button"
+                            className="qms-icon-btn"
+                            aria-label={`Reject ${d.original_filename}`}
+                            title="Reject"
+                            disabled={review.isPending}
+                            onClick={() => handleReview(d, 'REJECTED')}
+                          >
+                            <X size={16} />
+                          </button>
+                        )}
                         <button
                           type="button"
                           className="qms-icon-btn"

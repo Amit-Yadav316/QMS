@@ -1,8 +1,13 @@
 """Shared helpers for the test suite — request builders and sample payloads."""
 
+import json
+
 from httpx import AsyncClient, Response
 
 from tests import mailbox
+
+# A tiny valid-looking PDF blob for the mandatory mix-design / lab-report uploads.
+DEMO_PDF = ("file", ("demo.pdf", b"%PDF-1.4 demo", "application/pdf"))
 
 API = "/api/v1"
 DEFAULT_PASSWORD = "Password123!"
@@ -77,6 +82,49 @@ async def accept_and_verify(
     assert verified.status_code == 200, verified.text
     body = verified.json()
     return body["access_token"], body
+
+
+async def approve_mix_design(
+    client: AsyncClient,
+    *,
+    contractor_token: str,
+    qe_token: str,
+    project_id: int,
+    supplier_id: int,
+    grade_id: int,
+    **submit_fields,
+) -> int:
+    """Drive the RMC mix-design flow to an APPROVED mix for (supplier, grade):
+    the contractor requests the grade → the RMC submits via its token link → the
+    QE approves it. Returns the mix_design_id. (Mix designs are RMC-owned now, so
+    pour-enabling fixtures go through this instead of the removed contractor POST.)
+    """
+    await client.put(
+        f"{API}/projects/{project_id}/suppliers/{supplier_id}/required-grades",
+        json={"grade_ids": [grade_id]},
+        headers=bearer(contractor_token),
+    )
+    suppliers = (
+        await client.get(
+            f"{API}/projects/{project_id}/suppliers", headers=bearer(contractor_token)
+        )
+    ).json()
+    token = next(
+        s["mix_submission_token"] for s in suppliers if s["supplier_id"] == supplier_id
+    )
+    submitted = (
+        await client.post(
+            f"{API}/external/mix-design?token={token}",
+            data={"payload": json.dumps({"grade_id": grade_id, **submit_fields})},
+            files={"file": DEMO_PDF[1]},
+        )
+    ).json()
+    await client.patch(
+        f"{API}/projects/{project_id}/mix-designs/{submitted['mix_design_id']}/review",
+        json={"approval_status": "APPROVED"},
+        headers=bearer(qe_token),
+    )
+    return submitted["mix_design_id"]
 
 
 def sample_project_payload(**overrides) -> dict:

@@ -8,7 +8,7 @@ Integration tests for Phase 2 — the pour lifecycle:
 from sqlalchemy import select
 
 from app.models.auth import OrgInvitation
-from tests.helpers import API, accept_and_verify, bearer
+from tests.helpers import API, accept_and_verify, approve_mix_design, bearer
 from tests.integration.test_phase1_master_flow import (
     _client_with_project,
     _contractor_on_project,
@@ -53,10 +53,21 @@ async def _pour_refs(client, db_session, contractor_token, qe_token, project_id)
     supplier = (
         await client.post(
             f"{API}/projects/{project_id}/suppliers",
-            json={"supplier_name": "UltraTech RMC"},
+            json={"supplier_name": "UltraTech RMC", "contact_email": "plant@ultratech.example"},
             headers=bearer(contractor_token),
         )
     ).json()
+    # A pour may only use a grade with an APPROVED mix design — drive the
+    # RMC-owned flow (request grade → RMC submits → QE approves) so the
+    # downstream pour flows (phases 2/4/5/6/9) can raise M30 pours.
+    await approve_mix_design(
+        client,
+        contractor_token=contractor_token,
+        qe_token=qe_token,
+        project_id=project_id,
+        supplier_id=supplier["supplier_id"],
+        grade_id=m30["grade_id"],
+    )
     return {
         "tower_id": tower_id,
         "floor_id": floors[0]["floor_id"],
@@ -147,6 +158,29 @@ class TestPourLifecycle:
         )
         assert resp.status_code == 404
 
+    async def test_grade_without_approved_mix_is_rejected(self, client, db_session):
+        contractor_token, qe_token, project_id = await _project_with_qe(client, db_session)
+        refs = await _pour_refs(client, db_session, contractor_token, qe_token, project_id)
+        grades = (await client.get(f"{API}/grades", headers=bearer(qe_token))).json()
+        other = next(g for g in grades if g["grade_name"] != "M30")
+        resp = await client.post(
+            f"{API}/projects/{project_id}/pours",
+            json={**refs, "grade_id": other["grade_id"], "pour_date": "2026-07-15"},
+            headers=bearer(qe_token),
+        )
+        assert resp.status_code == 400
+
+    async def test_approved_grades_endpoint_lists_only_approved(self, client, db_session):
+        contractor_token, qe_token, project_id = await _project_with_qe(client, db_session)
+        await _pour_refs(client, db_session, contractor_token, qe_token, project_id)
+        rows = (
+            await client.get(
+                f"{API}/projects/{project_id}/mix-designs/approved-grades",
+                headers=bearer(qe_token),
+            )
+        ).json()
+        assert [g["grade_name"] for g in rows] == ["M30"]
+
 
 class TestPourTowerScope:
     """A contractor scoped to specific towers can only pour on those towers."""
@@ -213,10 +247,18 @@ class TestPourTowerScope:
         supplier = (
             await client.post(
                 f"{API}/projects/{project_id}/suppliers",
-                json={"supplier_name": "UltraTech RMC"},
+                json={"supplier_name": "UltraTech RMC", "contact_email": "plant@ultratech.example"},
                 headers=bearer(contractor_token),
             )
         ).json()
+        await approve_mix_design(
+            client,
+            contractor_token=contractor_token,
+            qe_token=qe_token,
+            project_id=project_id,
+            supplier_id=supplier["supplier_id"],
+            grade_id=m30["grade_id"],
+        )
         return {
             "tower_id": tower_id,
             "floor_id": floors[0]["floor_id"],

@@ -18,6 +18,12 @@ class DocumentCategory(str, enum.Enum):
     OTHER = "OTHER"
 
 
+class DocumentApprovalStatus(str, enum.Enum):
+    PENDING = "PENDING"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+
+
 class DocumentResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -30,4 +36,13 @@ class DocumentResponse(BaseModel):
     size_bytes: int
     uploaded_by: int | None
     uploaded_by_name: str | None
+    approval_status: str
+    rejection_reason: str | None = None
+    reviewed_by: int | None = None
+    reviewed_at: datetime | None = None
     uploaded_at: datetime
+
+
+class DocumentReview(BaseModel):
+    approval_status: DocumentApprovalStatus  # APPROVED | REJECTED | PENDING
+    rejection_reason: str | None = None

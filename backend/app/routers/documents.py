@@ -10,16 +10,23 @@ from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user
-from app.core.exceptions import NotFoundError
+from app.core.exceptions import NotFoundError, PermissionDeniedError
 from app.core.project_access import require_project
 from app.core.storage import storage
 from app.database.session import get_db
-from app.models.auth import User
+from app.models.auth import User, UserRole
 from app.models.master import Project
-from app.schemas.documents import DocumentCategory, DocumentResponse
+from app.schemas.documents import DocumentCategory, DocumentResponse, DocumentReview
 from app.services.document_service import DocumentService
 
 router = APIRouter(prefix="/projects", tags=["documents"])
+
+
+def _ensure_qe_or_pm(user: User) -> None:
+    if user.role not in (UserRole.QUALITY_ENGINEER, UserRole.PROJECT_MANAGER):
+        raise PermissionDeniedError(
+            "Only a quality engineer or project manager can review documents"
+        )
 
 
 @router.get("/{project_id}/documents", response_model=list[DocumentResponse])
@@ -51,6 +58,21 @@ async def upload_document(
         document_type=document_type.value if document_type else None,
         title=title,
     )
+
+
+@router.patch(
+    "/{project_id}/documents/{document_id}/review", response_model=DocumentResponse
+)
+async def review_document(
+    document_id: int,
+    data: DocumentReview,
+    project: Project = Depends(require_project),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """A QE or PM approves / rejects an uploaded document."""
+    _ensure_qe_or_pm(current_user)
+    return await DocumentService(db).review(project, document_id, data, current_user)
 
 
 @router.get("/{project_id}/documents/{document_id}/download")

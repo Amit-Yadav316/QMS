@@ -24,6 +24,11 @@ SYSTEM_PROMPT = (
     "Use the provided tools to fetch data — never invent numbers. Base every figure "
     "on tool results and report numbers with their units. If a tool returns no data, "
     "say so plainly. You may call several tools at once for multi-part questions. "
+    "To answer a question about a specific cube, sample, pour, challan or vehicle by "
+    "its reference (e.g. 'which RMC supplied CUBE-011'), call search_traceability with "
+    "that reference — each result carries the RMC supplier, grade, location and worst "
+    "result; use trace_sample for the full lineage. For target-vs-achieved strength "
+    "questions use get_target_mean. "
     "If a question is outside this project's quality data, say you can only help with "
     "this project.\n"
     "Answer format: open with a one-line direct answer, then present the details as "
@@ -100,6 +105,30 @@ def _derive_chart(messages: list[dict]) -> ChartSpec | None:
                 x_key="supplier_name",
                 series=[ChartSeries(name="Pass rate %", key="pass_rate_pct")],
                 data=data[:50],
+            )
+
+    # 1b. Target mean vs achieved → grouped bar per grade (IS 10262).
+    tm = results.get("get_target_mean")
+    if isinstance(tm, dict):
+        trows = tm.get("rows")
+        if isinstance(trows, list) and trows:
+            return ChartSpec(
+                type="bar",
+                title="Target mean vs achieved (per grade)",
+                x_key="grade_name",
+                series=[
+                    ChartSeries(name="Target mean", key="target_mean"),
+                    ChartSeries(name="Achieved avg", key="actual_mean"),
+                ],
+                data=[
+                    {
+                        "grade_name": r.get("grade_name"),
+                        "target_mean": r.get("target_mean"),
+                        "actual_mean": r.get("actual_mean"),
+                    }
+                    for r in trows
+                    if isinstance(r, dict)
+                ][:50],
             )
 
     # 2. Quality analytics → pie of result breakdown, else bar of strength buckets.

@@ -16,7 +16,8 @@ from app.core.project_access import ensure_can_manage_contractor_side, require_p
 from app.database.session import get_db
 from app.models.auth import User
 from app.models.master import Project
-from app.schemas.master import LabCreate, LabResponse
+from app.routers.suppliers import ensure_can_block
+from app.schemas.master import BlockRequest, LabCreate, LabResponse
 from app.services.lab_service import LabService
 
 router = APIRouter(prefix="/projects", tags=["labs"])
@@ -56,3 +57,29 @@ async def resend_lab_confirmation(
     """Re-send the confirmation email to a lab (contractor side)."""
     await ensure_can_manage_contractor_side(db, current_user, project)
     return await LabService(db).resend_confirmation(project, lab_id, current_user)
+
+
+@router.post("/{project_id}/labs/{lab_id}/block", response_model=LabResponse)
+async def block_lab(
+    lab_id: int,
+    data: BlockRequest,
+    project: Project = Depends(require_project),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Block a lab (with a reason) from new cube samples / report links."""
+    ensure_can_block(current_user)
+    return await LabService(db).set_blocked(
+        project, lab_id, current_user, blocked=True, reason=data.reason
+    )
+
+
+@router.post("/{project_id}/labs/{lab_id}/unblock", response_model=LabResponse)
+async def unblock_lab(
+    lab_id: int,
+    project: Project = Depends(require_project),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    ensure_can_block(current_user)
+    return await LabService(db).set_blocked(project, lab_id, current_user, blocked=False)

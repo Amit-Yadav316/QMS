@@ -22,3 +22,14 @@ export const useResendLabConfirmation = (pid: number) => {
     onSuccess: () => qc.invalidateQueries({ queryKey: labKeys.list(pid) }),
   });
 };
+
+export const useSetLabBlocked = (pid: number) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { labId: number; block: boolean; reason?: string }) =>
+      vars.block
+        ? labsApi.block(pid, vars.labId, vars.reason ?? '')
+        : labsApi.unblock(pid, vars.labId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: labKeys.list(pid) }),
+  });
+};
