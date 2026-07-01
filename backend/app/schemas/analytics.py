@@ -72,6 +72,73 @@ class SupplierScore(BaseModel):
     avg_strength_mpa: float | None = None
 
 
+# ── Phase 5B: the four IS-456/10262 statistical charts (all filter-driven) ────
+
+
+class RunPoint(BaseModel):
+    """One individual 28-day result on the quality-control run chart."""
+
+    test_date: str  # ISO date
+    observed_mpa: float
+    grade_name: str | None = None
+    tower_name: str | None = None
+    reference: str | None = None  # pour/sample reference
+
+
+class RunChart(BaseModel):
+    """Chronological individual results + IS-456 control lines. Control lines are
+    populated only when the data is a single grade (one fck)."""
+
+    points: list[RunPoint] = []
+    grade_name: str | None = None
+    fck: float | None = None
+    individual_min: float | None = None  # fck − 3
+    target_mean: float | None = None  # fck + 1.65·σ
+    mean: float | None = None
+
+
+class CurvePoint(BaseModel):
+    x: float
+    y: float
+
+
+class DistributionCurve(BaseModel):
+    """Normal distribution of the filtered strength dataset (IS-10262 basis)."""
+
+    sample_count: int = 0
+    mean: float | None = None
+    std_dev: float | None = None
+    fck: float | None = None
+    curve: list[CurvePoint] = []  # sampled bell curve
+    histogram: list[StrengthBucket] = []
+
+
+class TargetMeanRow(BaseModel):
+    grade_name: str
+    fck: float
+    target_mean: float  # fck + 1.65·σ
+    actual_mean: float | None = None
+    sample_count: int = 0
+
+
+class TargetMeanChart(BaseModel):
+    rows: list[TargetMeanRow] = []
+
+
+class AgePoint(BaseModel):
+    test_age_days: int
+    observed_mpa: float
+    required_mpa: float | None = None
+
+
+class StrengthAgeChart(BaseModel):
+    """Compressive strength vs age for a specific pour/element."""
+
+    points: list[AgePoint] = []
+    grade_name: str | None = None
+    reference: str | None = None
+
+
 class SupplierNcrCount(BaseModel):
     """NCRs raised against each supplier's pours, split by lifecycle + severity.
 

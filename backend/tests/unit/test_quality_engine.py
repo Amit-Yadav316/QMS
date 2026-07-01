@@ -48,3 +48,17 @@ class TestClassify:
     def test_zero_required_does_not_divide_by_zero(self):
         assert quality_engine.classify(10.0, 0) == ResultStatus.PASS
         assert quality_engine.classify(0.0, 0) == ResultStatus.PENDING
+
+
+class TestTargetMeanStrength:
+    def test_assumed_std_dev_by_grade(self):
+        assert quality_engine.assumed_std_dev(30) == 5.0
+        assert quality_engine.assumed_std_dev(20) == 4.0
+        assert quality_engine.assumed_std_dev(15) == 3.5
+
+    def test_target_mean_uses_assumed_sigma(self):
+        # IS 10262 M30: fck 30 + 1.65 * 5.0 = 38.25
+        assert quality_engine.target_mean_strength(30) == 38.25
+
+    def test_target_mean_with_explicit_sigma(self):
+        assert quality_engine.target_mean_strength(30, 4.0) == round(30 + 1.65 * 4.0, 2)

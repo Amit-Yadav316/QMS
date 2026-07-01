@@ -14,10 +14,14 @@ from app.core.project_access import require_project
 from app.database.session import get_db
 from app.models.master import Project
 from app.schemas.analytics import (
+    DistributionCurve,
     OverviewKpis,
     QualityAnalytics,
+    RunChart,
+    StrengthAgeChart,
     SupplierNcrCount,
     SupplierScore,
+    TargetMeanChart,
 )
 from app.services.analytics_service import AnalyticsService
 
@@ -80,4 +84,68 @@ async def ncrs_by_supplier(
 ):
     return await AnalyticsService(db).ncrs_by_supplier(
         project, date_from=date_from, date_to=date_to, grade_id=grade_id, tower_id=tower_id
+    )
+
+
+# ── Phase 5B: the four IS-456/10262 statistical charts ───────────────────────
+
+
+@router.get("/{project_id}/analytics/run-chart", response_model=RunChart)
+async def run_chart(
+    date_from: date | None = None,
+    date_to: date | None = None,
+    grade_id: int | None = None,
+    tower_id: int | None = None,
+    project: Project = Depends(require_project),
+    db: AsyncSession = Depends(get_db),
+):
+    return await AnalyticsService(db).run_chart(
+        project, date_from=date_from, date_to=date_to, grade_id=grade_id, tower_id=tower_id
+    )
+
+
+@router.get("/{project_id}/analytics/distribution", response_model=DistributionCurve)
+async def distribution(
+    date_from: date | None = None,
+    date_to: date | None = None,
+    grade_id: int | None = None,
+    tower_id: int | None = None,
+    project: Project = Depends(require_project),
+    db: AsyncSession = Depends(get_db),
+):
+    return await AnalyticsService(db).distribution(
+        project, date_from=date_from, date_to=date_to, grade_id=grade_id, tower_id=tower_id
+    )
+
+
+@router.get("/{project_id}/analytics/target-mean", response_model=TargetMeanChart)
+async def target_mean(
+    date_from: date | None = None,
+    date_to: date | None = None,
+    tower_id: int | None = None,
+    project: Project = Depends(require_project),
+    db: AsyncSession = Depends(get_db),
+):
+    return await AnalyticsService(db).target_mean_bar(
+        project, date_from=date_from, date_to=date_to, tower_id=tower_id
+    )
+
+
+@router.get("/{project_id}/analytics/strength-vs-age", response_model=StrengthAgeChart)
+async def strength_vs_age(
+    date_from: date | None = None,
+    date_to: date | None = None,
+    grade_id: int | None = None,
+    tower_id: int | None = None,
+    component_id: int | None = None,
+    project: Project = Depends(require_project),
+    db: AsyncSession = Depends(get_db),
+):
+    return await AnalyticsService(db).strength_vs_age(
+        project,
+        date_from=date_from,
+        date_to=date_to,
+        grade_id=grade_id,
+        tower_id=tower_id,
+        component_id=component_id,
     )

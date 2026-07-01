@@ -200,6 +200,20 @@ class TestChartDerivation:
     def test_empty_supplier_scorecard_yields_no_chart(self):
         assert _derive_chart([self._tool_msg("get_supplier_scorecard", [])]) is None
 
+    def test_target_mean_builds_grouped_bar(self):
+        chart = _derive_chart([
+            self._tool_msg("get_target_mean", {
+                "rows": [
+                    {"grade_name": "M30", "fck": 30.0, "target_mean": 38.25, "actual_mean": 34.0, "sample_count": 3},
+                ],
+            }),
+        ])
+        assert chart is not None
+        assert chart.type == "bar"
+        assert chart.x_key == "grade_name"
+        assert [s.key for s in chart.series] == ["target_mean", "actual_mean"]
+        assert chart.data[0] == {"grade_name": "M30", "target_mean": 38.25, "actual_mean": 34.0}
+
     def test_overview_kpis_builds_results_bar(self):
         chart = _derive_chart([
             self._tool_msg("get_overview_kpis", {

@@ -102,6 +102,30 @@ def _derive_chart(messages: list[dict]) -> ChartSpec | None:
                 data=data[:50],
             )
 
+    # 1b. Target mean vs achieved → grouped bar per grade (IS 10262).
+    tm = results.get("get_target_mean")
+    if isinstance(tm, dict):
+        trows = tm.get("rows")
+        if isinstance(trows, list) and trows:
+            return ChartSpec(
+                type="bar",
+                title="Target mean vs achieved (per grade)",
+                x_key="grade_name",
+                series=[
+                    ChartSeries(name="Target mean", key="target_mean"),
+                    ChartSeries(name="Achieved avg", key="actual_mean"),
+                ],
+                data=[
+                    {
+                        "grade_name": r.get("grade_name"),
+                        "target_mean": r.get("target_mean"),
+                        "actual_mean": r.get("actual_mean"),
+                    }
+                    for r in trows
+                    if isinstance(r, dict)
+                ][:50],
+            )
+
     # 2. Quality analytics → pie of result breakdown, else bar of strength buckets.
     qa = results.get("get_quality_analytics")
     if isinstance(qa, dict):

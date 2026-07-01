@@ -31,6 +31,25 @@ DEFAULT_AGE_FRACTIONS: dict[int, float] = {3: 0.40, 7: 0.65, 14: 0.90, 28: 1.0}
 # concrete is well short of spec, not a marginal miss.
 CRITICAL_FRACTION = 0.85
 
+# IS 10262 assumed standard deviation (N/mm²) by characteristic strength, used
+# when there isn't enough site data (< ~30 results) to compute σ reliably.
+ASSUMED_STD_DEV: dict[int, float] = {
+    10: 3.5, 15: 3.5, 20: 4.0, 25: 4.0, 30: 5.0,
+    35: 5.0, 40: 5.0, 45: 5.0, 50: 5.0, 55: 5.0, 60: 5.0,
+}
+
+
+def assumed_std_dev(fck: float) -> float:
+    """IS 10262 assumed σ for the characteristic strength at/below ``fck``."""
+    keys = [k for k in ASSUMED_STD_DEV if k <= fck]
+    return ASSUMED_STD_DEV[max(keys)] if keys else ASSUMED_STD_DEV[min(ASSUMED_STD_DEV)]
+
+
+def target_mean_strength(fck: float, std_dev: float | None = None) -> float:
+    """IS 10262 target mean strength = fck + 1.65·S (S = assumed σ if not given)."""
+    s = std_dev if std_dev is not None else assumed_std_dev(fck)
+    return round(float(fck) + 1.65 * float(s), 2)
+
 
 def age_fraction(test_age_days: int) -> float:
     """The fraction of 28-day strength expected at ``test_age_days``.

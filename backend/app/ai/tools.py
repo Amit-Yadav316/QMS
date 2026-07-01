@@ -68,6 +68,25 @@ TOOL_SPECS: list[dict] = [
     {
         "type": "function",
         "function": {
+            "name": "get_target_mean",
+            "description": (
+                "IS 10262 target mean strength (fck + 1.65*S) vs the actual achieved "
+                "site average, per concrete grade. Use for 'are we hitting target "
+                "strength' questions. Optionally filter by tower_id or a test-date range."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "tower_id": {"type": "integer"},
+                    "date_from": {"type": "string", "description": "YYYY-MM-DD"},
+                    "date_to": {"type": "string", "description": "YYYY-MM-DD"},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "search_traceability",
             "description": (
                 "Find cube samples by any reference (sample, pour, NCR number, challan "
@@ -141,6 +160,16 @@ async def run_tool(session: AsyncSession, project: Project, name: str, args: dic
 
     if name == "get_supplier_scorecard":
         return _jsonable(await AnalyticsService(session).suppliers(project))
+
+    if name == "get_target_mean":
+        return _jsonable(
+            await AnalyticsService(session).target_mean_bar(
+                project,
+                tower_id=_as_int(args.get("tower_id")),
+                date_from=_as_date(args.get("date_from")),
+                date_to=_as_date(args.get("date_to")),
+            )
+        )
 
     if name == "search_traceability":
         q = args.get("q")
