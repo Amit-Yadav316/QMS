@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Bar, BarChart, CartesianGrid, Legend,
@@ -6,6 +6,8 @@ import {
 } from 'recharts';
 import { Users, Truck, Building, FileText, ChevronRight } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
+import { Select } from '../../components/ui/Select';
+import { Input } from '../../components/ui/Input';
 import { KpiStrip } from '../../components/analytics/KpiStrip';
 import { useProject } from '../../components/layout/ProjectLayout';
 import { useProjectMembers } from '../../queries/team';
@@ -15,6 +17,9 @@ import { useLabs } from '../../queries/labs';
 import {
   useAnalyticsOverview, useSupplierScores, useNcrsBySupplier,
 } from '../../queries/analytics';
+import { useProjectTowers } from '../../queries/floors';
+import { useGrades } from '../../queries/catalog';
+import type { QualityFilters } from '../../types/master';
 import '../Dashboard.css';
 import './ProjectOverview.css';
 
@@ -31,9 +36,26 @@ export const ProjectOverview: React.FC = () => {
   const { data: contractors = [] } = useProjectContractors(pid, isClient);
   const { data: suppliers = [] } = useSuppliers(pid);
   const { data: labs = [] } = useLabs(pid);
+  // Filters drive the two charts + supplier data below (the KPI strip stays
+  // whole-project as the headline summary).
+  const [towerId, setTowerId] = useState('ALL');
+  const [gradeId, setGradeId] = useState('ALL');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const filters = useMemo<QualityFilters>(() => {
+    const f: QualityFilters = {};
+    if (towerId !== 'ALL') f.tower_id = Number(towerId);
+    if (gradeId !== 'ALL') f.grade_id = Number(gradeId);
+    if (dateFrom) f.date_from = dateFrom;
+    if (dateTo) f.date_to = dateTo;
+    return f;
+  }, [towerId, gradeId, dateFrom, dateTo]);
+
+  const { data: towers = [] } = useProjectTowers(pid);
+  const { data: grades = [] } = useGrades();
   const { data: kpis = null } = useAnalyticsOverview(pid);
-  const { data: supplierScores = [] } = useSupplierScores(pid);
-  const { data: ncrBySupplier = [] } = useNcrsBySupplier(pid);
+  const { data: supplierScores = [] } = useSupplierScores(pid, filters);
+  const { data: ncrBySupplier = [] } = useNcrsBySupplier(pid, filters);
 
   const counts = {
     members: members.length,
@@ -118,6 +140,15 @@ export const ProjectOverview: React.FC = () => {
       </div>
 
       <KpiStrip items={kpiItems} />
+
+      <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap', margin: '4px 0' }}>
+        <Select label="Tower" fullWidth={false} value={towerId} onChange={(e) => setTowerId(e.target.value)}
+          options={[{ label: 'All towers', value: 'ALL' }, ...towers.map((t) => ({ label: t.tower_name, value: t.tower_id }))]} />
+        <Select label="Grade" fullWidth={false} value={gradeId} onChange={(e) => setGradeId(e.target.value)}
+          options={[{ label: 'All grades', value: 'ALL' }, ...grades.map((g) => ({ label: g.grade_name, value: g.grade_id }))]} />
+        <Input label="From" type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} fullWidth={false} />
+        <Input label="To" type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} fullWidth={false} />
+      </div>
 
       <div className="qms-dashboard-charts">
         <Card className="qms-chart-card">

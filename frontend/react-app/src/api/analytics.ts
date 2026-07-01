@@ -4,11 +4,15 @@
 
 import { api } from './client';
 import type {
+  DistributionCurve,
   OverviewKpis,
   QualityAnalytics,
   QualityFilters,
+  RunChart,
+  StrengthAgeChart,
   SupplierNcrCount,
   SupplierScore,
+  TargetMeanChart,
 } from '../types/master';
 
 export const analyticsApi = {
@@ -33,6 +37,28 @@ export const analyticsApi = {
   ncrsBySupplier(projectId: number, filters: QualityFilters = {}): Promise<SupplierNcrCount[]> {
     return api
       .get<SupplierNcrCount[]>(`/projects/${projectId}/analytics/ncrs-by-supplier`, { params: filters })
+      .then((r) => r.data);
+  },
+
+  // ── Phase 5B statistical charts ──
+  runChart(projectId: number, filters: QualityFilters = {}): Promise<RunChart> {
+    return api
+      .get<RunChart>(`/projects/${projectId}/analytics/run-chart`, { params: filters })
+      .then((r) => r.data);
+  },
+  distribution(projectId: number, filters: QualityFilters = {}): Promise<DistributionCurve> {
+    return api
+      .get<DistributionCurve>(`/projects/${projectId}/analytics/distribution`, { params: filters })
+      .then((r) => r.data);
+  },
+  targetMean(projectId: number, filters: QualityFilters = {}): Promise<TargetMeanChart> {
+    return api
+      .get<TargetMeanChart>(`/projects/${projectId}/analytics/target-mean`, { params: filters })
+      .then((r) => r.data);
+  },
+  strengthVsAge(projectId: number, filters: QualityFilters = {}): Promise<StrengthAgeChart> {
+    return api
+      .get<StrengthAgeChart>(`/projects/${projectId}/analytics/strength-vs-age`, { params: filters })
       .then((r) => r.data);
   },
 };

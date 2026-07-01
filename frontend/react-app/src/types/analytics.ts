@@ -71,4 +71,53 @@ export interface QualityFilters {
   grade_id?: number;
   supplier_id?: number;
   tower_id?: number;
+  component_id?: number;
+}
+
+// ── Phase 5B: the four IS-456/10262 statistical charts ──────────────────────
+
+export interface RunPoint {
+  test_date: string;
+  observed_mpa: number;
+  grade_name: string | null;
+  tower_name: string | null;
+  reference: string | null;
+}
+export interface RunChart {
+  points: RunPoint[];
+  grade_name: string | null;
+  fck: number | null;
+  individual_min: number | null;
+  target_mean: number | null;
+  mean: number | null;
+}
+
+export interface CurvePoint { x: number; y: number }
+export interface DistributionCurve {
+  sample_count: number;
+  mean: number | null;
+  std_dev: number | null;
+  fck: number | null;
+  curve: CurvePoint[];
+  histogram: StrengthBucket[];
+}
+
+export interface TargetMeanRow {
+  grade_name: string;
+  fck: number;
+  target_mean: number;
+  actual_mean: number | null;
+  sample_count: number;
+}
+export interface TargetMeanChart { rows: TargetMeanRow[] }
+
+export interface AgePoint {
+  test_age_days: number;
+  observed_mpa: number;
+  required_mpa: number | null;
+}
+export interface StrengthAgeChart {
+  points: AgePoint[];
+  grade_name: string | null;
+  reference: string | null;
 }
