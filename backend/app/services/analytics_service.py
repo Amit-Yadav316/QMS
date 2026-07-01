@@ -27,7 +27,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Select
 
 from app.core import quality_engine
-from app.models.master import Grade, Project, Supplier, Tower
+from app.models.master import (
+    Grade,
+    MixApprovalStatus,
+    MixDesign,
+    Project,
+    Supplier,
+    Tower,
+)
 from app.models.quality import NCR, CubeTest, NCRStatus, ResultStatus
 from app.models.transaction import (
     CubeSample,
@@ -290,7 +297,9 @@ class AnalyticsService:
             chart.grade_name = grade.grade_name
             chart.fck = fck
             chart.individual_min = round(fck - 3, 2)
-            chart.target_mean = quality_engine.target_mean_strength(fck, sigma)
+            chart.target_mean = await self._target_for_grade(
+                project.project_id, grade_id, fck, sigma
+            )
             chart.mean = round(mean(observed), 2) if observed else None
         return chart
 
@@ -376,16 +385,21 @@ class AnalyticsService:
         for gid, gname, fck, obs in rows:
             entry = by_grade.setdefault(gid, {"name": gname, "fck": float(fck), "obs": []})
             entry["obs"].append(float(obs))
-        out = [
-            TargetMeanRow(
-                grade_name=d["name"],
-                fck=d["fck"],
-                target_mean=quality_engine.target_mean_strength(d["fck"], self._sigma(d["obs"])),
-                actual_mean=round(mean(d["obs"]), 2) if d["obs"] else None,
-                sample_count=len(d["obs"]),
+        out: list[TargetMeanRow] = []
+        for gid, d in sorted(by_grade.items(), key=lambda kv: kv[1]["fck"]):
+            # Target = the RMC's stated design target (mix design), else IS-10262.
+            target = await self._target_for_grade(
+                project.project_id, gid, d["fck"], self._sigma(d["obs"])
             )
-            for _gid, d in sorted(by_grade.items(), key=lambda kv: kv[1]["fck"])
-        ]
+            out.append(
+                TargetMeanRow(
+                    grade_name=d["name"],
+                    fck=d["fck"],
+                    target_mean=target,
+                    actual_mean=round(mean(d["obs"]), 2) if d["obs"] else None,
+                    sample_count=len(d["obs"]),
+                )
+            )
         return TargetMeanChart(rows=out)
 
     async def strength_vs_age(
@@ -397,8 +411,11 @@ class AnalyticsService:
         grade_id: int | None = None,
         tower_id: int | None = None,
         component_id: int | None = None,
+        sample_id: int | None = None,
     ) -> StrengthAgeChart:
-        """3/7/28-day results for a specific pour/element (all ages, not just final)."""
+        """3/7/28-day results for a specific batch (cube sample) or pour/element —
+        all ages, not just the final. A ``sample_id`` pins one batch by the exact
+        reference the lab tested against."""
         conds = [
             Pour.project_id == project.project_id,
             *self._dim_conds(
@@ -408,6 +425,8 @@ class AnalyticsService:
         ]
         if component_id is not None:
             conds.append(Pour.component_id == component_id)
+        if sample_id is not None:
+            conds.append(CubeTest.sample_id == sample_id)
         rows = (
             await self.session.execute(
                 self._ct_join(
@@ -415,7 +434,7 @@ class AnalyticsService:
                     CubeTest.observed_strength_mpa,
                     CubeTest.required_strength_mpa,
                     Grade.grade_name,
-                    Pour.pour_reference,
+                    CubeSample.sample_reference,
                 )
                 .join(Grade, Grade.grade_id == Pour.grade_id)
                 .where(*conds)
@@ -440,6 +459,28 @@ class AnalyticsService:
     def _sigma(observed: list[float]) -> float | None:
         """Computed σ once there's enough data; else None → IS-10262 assumed σ."""
         return pstdev(observed) if len(observed) >= _MIN_SAMPLES_FOR_STDEV else None
+
+    async def _mix_target_mean(self, project_id: int, grade_id: int) -> float | None:
+        """The RMC's design target mean strength for a grade, from an approved
+        mix design (the RMC states it on the mix-design form)."""
+        val = (
+            await self.session.execute(
+                select(func.max(MixDesign.target_mean_strength_mpa)).where(
+                    MixDesign.project_id == project_id,
+                    MixDesign.grade_id == grade_id,
+                    MixDesign.approval_status == MixApprovalStatus.APPROVED,
+                    MixDesign.target_mean_strength_mpa.isnot(None),
+                )
+            )
+        ).scalar_one_or_none()
+        return float(val) if val is not None else None
+
+    async def _target_for_grade(
+        self, project_id: int, grade_id: int, fck: float, sigma: float | None
+    ) -> float:
+        """Prefer the RMC's stated target mean; fall back to IS-10262 fck+1.65σ."""
+        mix = await self._mix_target_mean(project_id, grade_id)
+        return mix if mix is not None else quality_engine.target_mean_strength(fck, sigma)
 
     # ── Overview helpers ─────────────────────────────────────────────────────
 

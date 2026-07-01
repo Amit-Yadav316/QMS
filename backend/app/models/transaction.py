@@ -349,7 +349,8 @@ class CubeSample(Base):
     cast_by: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("auth.users.user_id"), nullable=True
     )
-    no_of_cubes: Mapped[int] = mapped_column(Integer, default=3, nullable=False)
+    # 9 by default — three sets of 3 for the 7/14/28-day tests.
+    no_of_cubes: Mapped[int] = mapped_column(Integer, default=9, nullable=False)
     lab_id: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("master.testing_labs.lab_id"), nullable=True
     )

@@ -25,7 +25,7 @@ class CubeSampleCreate(BaseModel):
 
     sample_reference: str | None = None
     cast_date: date
-    no_of_cubes: int = 3
+    no_of_cubes: int = 9  # three sets of 3 for the 7/14/28-day tests
     lab_id: int | None = None
     lab_dispatch_date: date | None = None
     expected_result_date: date | None = None

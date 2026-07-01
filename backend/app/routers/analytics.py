@@ -138,6 +138,7 @@ async def strength_vs_age(
     grade_id: int | None = None,
     tower_id: int | None = None,
     component_id: int | None = None,
+    sample_id: int | None = None,
     project: Project = Depends(require_project),
     db: AsyncSession = Depends(get_db),
 ):
@@ -148,4 +149,5 @@ async def strength_vs_age(
         grade_id=grade_id,
         tower_id=tower_id,
         component_id=component_id,
+        sample_id=sample_id,
     )
