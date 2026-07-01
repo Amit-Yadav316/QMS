@@ -72,6 +72,7 @@ export interface QualityFilters {
   supplier_id?: number;
   tower_id?: number;
   component_id?: number;
+  sample_id?: number;
 }
 
 // ── Phase 5B: the four IS-456/10262 statistical charts ──────────────────────
