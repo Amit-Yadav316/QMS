@@ -1,4 +1,7 @@
 import React, { useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
 import { Select } from '../../components/ui/Select';
@@ -11,7 +14,7 @@ import { getApiErrorMessage } from '../../api/client';
 import { toast } from '../../lib/toast';
 import { useCreateLab, useLabs, useResendLabConfirmation } from '../../queries/labs';
 import { str } from '../../lib/coerce';
-import type { ConfirmationStatus, LabCreate, LabResponse, LabType } from '../../types/master';
+import type { ConfirmationStatus, LabCreate, LabResponse } from '../../types/master';
 
 const CONF_VARIANT: Record<ConfirmationStatus, 'pass' | 'warn' | 'fail'> = {
   CONFIRMED: 'pass', PENDING: 'warn', DECLINED: 'fail',
@@ -20,7 +23,17 @@ const CONF_LABEL: Record<ConfirmationStatus, string> = {
   CONFIRMED: 'Confirmed', PENDING: 'Pending', DECLINED: 'Declined',
 };
 
-const EMPTY = { lab_name: '', lab_type: 'THIRD_PARTY' as LabType, accreditation_no: '', city: '', state: '', contact_email: '', contact_phone: '' };
+const schema = z.object({
+  lab_name: z.string().min(1, 'Lab name is required'),
+  lab_type: z.enum(['THIRD_PARTY', 'IN_HOUSE']),
+  accreditation_no: z.string(),
+  city: z.string(),
+  state: z.string(),
+  contact_email: z.string().min(1, 'Contact email is required').email('Enter a valid email'),
+  contact_phone: z.string(),
+});
+type FormValues = z.infer<typeof schema>;
+const EMPTY: FormValues = { lab_name: '', lab_type: 'THIRD_PARTY', accreditation_no: '', city: '', state: '', contact_email: '', contact_phone: '' };
 
 export const ProjectLabs: React.FC = () => {
   const { project } = useProject();
@@ -31,14 +44,13 @@ export const ProjectLabs: React.FC = () => {
   const createLab = useCreateLab(pid);
   const resend = useResendLabConfirmation(pid);
 
-  const [form, setForm] = useState({ ...EMPTY });
   const [showForm, setShowForm] = useState(false);
+  const { register, handleSubmit, reset, formState: { errors } } = useForm<FormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: EMPTY,
+  });
 
-  const set = (k: keyof typeof EMPTY) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
-    setForm((p) => ({ ...p, [k]: e.target.value }));
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const onSubmit = async (form: FormValues) => {
     const payload: LabCreate = {
       lab_name: form.lab_name.trim(),
       lab_type: form.lab_type,
@@ -50,12 +62,8 @@ export const ProjectLabs: React.FC = () => {
     };
     try {
       const l = await createLab.mutateAsync(payload);
-      toast.success(
-        l.contact_email
-          ? `Lab "${l.lab_name}" registered — confirmation sent to ${l.contact_email}.`
-          : `Lab "${l.lab_name}" registered. Add a contact email to send a confirmation request.`,
-      );
-      setForm({ ...EMPTY });
+      toast.success(`Lab "${l.lab_name}" registered — confirmation sent to ${l.contact_email}.`);
+      reset();
       setShowForm(false);
     } catch (err) {
       toast.error(getApiErrorMessage(err, 'Unable to register lab.'));
@@ -78,19 +86,19 @@ export const ProjectLabs: React.FC = () => {
       {canManage && showForm && (
         <Card className="qms-form-section">
           <h3 className="qms-section-heading-plain qms-mb-12">Register a testing lab</h3>
-          <form onSubmit={handleSubmit} className="qms-grid-2">
-            <Input label="Lab name" required value={form.lab_name} onChange={set('lab_name')} placeholder="e.g. SGS Labs" />
-            <Select label="Lab type" value={form.lab_type} onChange={set('lab_type')} options={[
+          <form onSubmit={handleSubmit(onSubmit)} className="qms-grid-2" noValidate>
+            <Input label="Lab name" required error={errors.lab_name?.message} placeholder="e.g. SGS Labs" {...register('lab_name')} />
+            <Select label="Lab type" {...register('lab_type')} options={[
               { label: 'Third party', value: 'THIRD_PARTY' },
               { label: 'In-house', value: 'IN_HOUSE' },
             ]} />
-            <Input label="Accreditation no." value={form.accreditation_no} onChange={set('accreditation_no')} />
-            <Input label="City" value={form.city} onChange={set('city')} />
-            <Input label="State" value={form.state} onChange={set('state')} />
-            <Input label="Contact email" type="email" required value={form.contact_email} onChange={set('contact_email')} placeholder="Lab gets its report links here" />
-            <Input label="Contact phone" type="tel" value={form.contact_phone} onChange={set('contact_phone')} />
+            <Input label="Accreditation no." {...register('accreditation_no')} />
+            <Input label="City" {...register('city')} />
+            <Input label="State" {...register('state')} />
+            <Input label="Contact email" type="email" required error={errors.contact_email?.message} placeholder="Lab gets its report links here" {...register('contact_email')} />
+            <Input label="Contact phone" type="tel" {...register('contact_phone')} />
             <div className="qms-form-actions qms-grid-span-2">
-              <Button type="submit" variant="primary" disabled={createLab.isPending || !form.lab_name.trim() || !form.contact_email.trim()} icon={<Plus size={16} />}>
+              <Button type="submit" variant="primary" disabled={createLab.isPending} icon={<Plus size={16} />}>
                 {createLab.isPending ? 'Registering…' : 'Register lab'}
               </Button>
               <Button type="button" variant="ghost" disabled={createLab.isPending} onClick={() => setShowForm(false)}>

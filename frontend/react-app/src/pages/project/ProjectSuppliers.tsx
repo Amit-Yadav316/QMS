@@ -1,5 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
 import { Select } from '../../components/ui/Select';
@@ -22,7 +25,18 @@ const CONF_LABEL: Record<ConfirmationStatus, string> = {
   CONFIRMED: 'Confirmed', PENDING: 'Pending', DECLINED: 'Declined',
 };
 
-const EMPTY = { supplier_name: '', plant_name: '', gst_number: '', plant_location: '', plant_distance_km: '', contact_email: '', contact_phone: '', mix_design_document_id: '' };
+const schema = z.object({
+  supplier_name: z.string().min(1, 'Supplier name is required'),
+  plant_name: z.string(),
+  gst_number: z.string(),
+  plant_location: z.string(),
+  plant_distance_km: z.string(),
+  contact_email: z.string().min(1, 'Contact email is required').email('Enter a valid email'),
+  contact_phone: z.string(),
+  mix_design_document_id: z.string(),
+});
+type FormValues = z.infer<typeof schema>;
+const EMPTY: FormValues = { supplier_name: '', plant_name: '', gst_number: '', plant_location: '', plant_distance_km: '', contact_email: '', contact_phone: '', mix_design_document_id: '' };
 
 export const ProjectSuppliers: React.FC = () => {
   const { project } = useProject();
@@ -41,14 +55,13 @@ export const ProjectSuppliers: React.FC = () => {
     [documents],
   );
 
-  const [form, setForm] = useState({ ...EMPTY });
   const [showForm, setShowForm] = useState(false);
+  const { register, handleSubmit, reset, formState: { errors } } = useForm<FormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: EMPTY,
+  });
 
-  const set = (k: keyof typeof EMPTY) => (e: React.ChangeEvent<HTMLInputElement>) =>
-    setForm((p) => ({ ...p, [k]: e.target.value }));
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const onSubmit = async (form: FormValues) => {
     const payload: SupplierCreate = {
       supplier_name: form.supplier_name.trim(),
       plant_name: str(form.plant_name),
@@ -61,12 +74,8 @@ export const ProjectSuppliers: React.FC = () => {
     };
     try {
       const s = await createSupplier.mutateAsync(payload);
-      toast.success(
-        s.contact_email
-          ? `Supplier "${s.supplier_name}" registered — confirmation sent to ${s.contact_email}.`
-          : `Supplier "${s.supplier_name}" registered. Add a contact email to send a confirmation request.`,
-      );
-      setForm({ ...EMPTY });
+      toast.success(`Supplier "${s.supplier_name}" registered — confirmation sent to ${s.contact_email}.`);
+      reset();
       setShowForm(false);
     } catch (err) {
       toast.error(getApiErrorMessage(err, 'Unable to register supplier.'));
@@ -89,25 +98,24 @@ export const ProjectSuppliers: React.FC = () => {
       {canManage && showForm && (
         <Card className="qms-form-section">
           <h3 className="qms-section-heading-plain qms-mb-12">Register an RMC supplier</h3>
-          <form onSubmit={handleSubmit} className="qms-grid-2">
-            <Input label="Supplier company name" required value={form.supplier_name} onChange={set('supplier_name')} placeholder="e.g. UltraTech RMC" />
-            <Input label="Plant name" value={form.plant_name} onChange={set('plant_name')} />
-            <Input label="GST number" value={form.gst_number} onChange={set('gst_number')} />
-            <Input label="Plant location" value={form.plant_location} onChange={set('plant_location')} />
-            <Input label="Distance from site (km)" type="number" value={form.plant_distance_km} onChange={set('plant_distance_km')} />
-            <Input label="Contact email" type="email" required value={form.contact_email} onChange={set('contact_email')} placeholder="RMC plant gets its links here" />
-            <Input label="Contact phone" type="tel" value={form.contact_phone} onChange={set('contact_phone')} />
+          <form onSubmit={handleSubmit(onSubmit)} className="qms-grid-2" noValidate>
+            <Input label="Supplier company name" required error={errors.supplier_name?.message} placeholder="e.g. UltraTech RMC" {...register('supplier_name')} />
+            <Input label="Plant name" {...register('plant_name')} />
+            <Input label="GST number" {...register('gst_number')} />
+            <Input label="Plant location" {...register('plant_location')} />
+            <Input label="Distance from site (km)" type="number" {...register('plant_distance_km')} />
+            <Input label="Contact email" type="email" required error={errors.contact_email?.message} placeholder="RMC plant gets its links here" {...register('contact_email')} />
+            <Input label="Contact phone" type="tel" {...register('contact_phone')} />
             <Select
               label="Mix design document"
-              value={form.mix_design_document_id}
-              onChange={(e) => setForm((p) => ({ ...p, mix_design_document_id: e.target.value }))}
+              {...register('mix_design_document_id')}
               options={[
                 { label: documents.length ? 'None — attach later' : 'No documents — upload one in Documents', value: '' },
                 ...documents.map((d) => ({ label: d.title ?? d.original_filename, value: d.document_id })),
               ]}
             />
             <div className="qms-form-actions qms-grid-span-2">
-              <Button type="submit" variant="primary" disabled={createSupplier.isPending || !form.supplier_name.trim() || !form.contact_email.trim()} icon={<Plus size={16} />}>
+              <Button type="submit" variant="primary" disabled={createSupplier.isPending} icon={<Plus size={16} />}>
                 {createSupplier.isPending ? 'Registering…' : 'Register supplier'}
               </Button>
               <Button type="button" variant="ghost" disabled={createSupplier.isPending} onClick={() => setShowForm(false)}>
