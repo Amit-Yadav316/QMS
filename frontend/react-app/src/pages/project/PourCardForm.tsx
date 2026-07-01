@@ -149,7 +149,7 @@ export const PourCardForm: React.FC = () => {
           ]} />
           <Select label="RMC supplier" required error={errors.supplier_horizontal_id?.message} {...register('supplier_horizontal_id')} options={[
             { label: suppliers.length ? 'Select supplier…' : 'No suppliers yet', value: '' },
-            ...suppliers.map((s) => ({ label: s.supplier_name, value: s.supplier_id })),
+            ...suppliers.filter((s) => !s.is_blocked).map((s) => ({ label: s.supplier_name, value: s.supplier_id })),
           ]} />
           <Input label="Sub-contractor" placeholder="Optional" {...register('sub_contractor_name')} />
         </div>

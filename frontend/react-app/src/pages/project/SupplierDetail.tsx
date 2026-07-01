@@ -102,8 +102,13 @@ export const SupplierDetail: React.FC = () => {
           <Card className="qms-form-section">
             <div className="qms-detail-title-row">
               <h2 className="qms-pw-title">{supplier.supplier_name}</h2>
-              <Badge variant={CONF_VARIANT[supplier.status]}>{CONF_LABEL[supplier.status]}</Badge>
+              {supplier.is_blocked
+                ? <Badge variant="fail" title={supplier.block_reason ?? undefined}>Blocked</Badge>
+                : <Badge variant={CONF_VARIANT[supplier.status]}>{CONF_LABEL[supplier.status]}</Badge>}
             </div>
+            {supplier.is_blocked && supplier.block_reason && (
+              <p className="qms-text-sm" style={{ color: '#991B1B' }}>Blocked: {supplier.block_reason}</p>
+            )}
             <div className="qms-text-sm text-muted qms-detail-meta">
               {supplier.plant_name && <span>Plant: {supplier.plant_name}</span>}
               {supplier.plant_location && <span>Location: {supplier.plant_location}</span>}

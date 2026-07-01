@@ -41,6 +41,8 @@ export interface LabResponse {
   is_active: boolean;
   status: ConfirmationStatus;
   confirmed_at: string | null;
+  is_blocked: boolean;
+  block_reason: string | null;
   created_at: string;
 }
 

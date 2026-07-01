@@ -11,9 +11,17 @@ import { Badge } from '../../components/ui/Badge';
 import { ErrorBox } from '../../components/ui/ErrorBox';
 import { Plus, Mail, FileDown } from 'lucide-react';
 import { useProject } from '../../components/layout/ProjectLayout';
+import { useAuth } from '../../hooks/useAuth';
+import { BlockControl } from '../../components/BlockControl';
 import { getApiErrorMessage } from '../../api/client';
 import { toast } from '../../lib/toast';
-import { useCreateSupplier, useResendSupplierConfirmation, useSuppliers } from '../../queries/suppliers';
+import { canBlockEntities } from '../../lib/roles';
+import {
+  useCreateSupplier,
+  useResendSupplierConfirmation,
+  useSetSupplierBlocked,
+  useSuppliers,
+} from '../../queries/suppliers';
 import { useDocuments, useDownloadDocument } from '../../queries/documents';
 import { num, str } from '../../lib/coerce';
 import type { ConfirmationStatus, DocumentResponse, SupplierCreate, SupplierResponse } from '../../types/master';
@@ -40,13 +48,25 @@ const EMPTY: FormValues = { supplier_name: '', plant_name: '', gst_number: '', p
 
 export const ProjectSuppliers: React.FC = () => {
   const { project } = useProject();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const pid = project.project_id;
   const canManage = project.access.can_manage_contractor_side;
+  const canBlock = canBlockEntities(user?.role);
 
   const { data: rows = [], isPending, error: loadError } = useSuppliers(pid);
   const { data: documents = [] } = useDocuments(pid);
   const createSupplier = useCreateSupplier(pid);
+  const setBlocked = useSetSupplierBlocked(pid);
+
+  const toggleBlock = async (s: SupplierResponse, reason?: string) => {
+    try {
+      await setBlocked.mutateAsync({ supplierId: s.supplier_id, block: !s.is_blocked, reason });
+      toast.success(s.is_blocked ? `Unblocked ${s.supplier_name}.` : `Blocked ${s.supplier_name}.`);
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, 'Could not update the supplier.'));
+    }
+  };
   const resend = useResendSupplierConfirmation(pid);
   const download = useDownloadDocument(pid);
 
@@ -174,11 +194,15 @@ export const ProjectSuppliers: React.FC = () => {
                     <td>{s.contact_email ?? s.contact_phone ?? '—'}</td>
                     <td>
                       <div className="qms-cell-actions">
-                        <Badge variant={CONF_VARIANT[s.status]}>{CONF_LABEL[s.status]}</Badge>
-                        {s.status === 'CONFIRMED' && s.confirmed_at && (
+                        {s.is_blocked ? (
+                          <Badge variant="fail" title={s.block_reason ?? undefined}>Blocked</Badge>
+                        ) : (
+                          <Badge variant={CONF_VARIANT[s.status]}>{CONF_LABEL[s.status]}</Badge>
+                        )}
+                        {!s.is_blocked && s.status === 'CONFIRMED' && s.confirmed_at && (
                           <span className="qms-text-sm text-muted">{new Date(s.confirmed_at).toLocaleDateString()}</span>
                         )}
-                        {canManage && s.status !== 'CONFIRMED' && s.contact_email && (
+                        {canManage && !s.is_blocked && s.status !== 'CONFIRMED' && s.contact_email && (
                           <Button
                             variant="ghost"
                             size="sm"
@@ -188,6 +212,14 @@ export const ProjectSuppliers: React.FC = () => {
                           >
                             {resend.isPending && resend.variables === s.supplier_id ? 'Sending…' : 'Resend'}
                           </Button>
+                        )}
+                        {canBlock && (
+                          <BlockControl
+                            blocked={s.is_blocked}
+                            busy={setBlocked.isPending}
+                            onBlock={(reason) => toggleBlock(s, reason)}
+                            onUnblock={() => toggleBlock(s)}
+                          />
                         )}
                       </div>
                     </td>

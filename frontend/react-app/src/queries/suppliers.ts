@@ -22,3 +22,14 @@ export const useResendSupplierConfirmation = (pid: number) => {
     onSuccess: () => qc.invalidateQueries({ queryKey: supplierKeys.list(pid) }),
   });
 };
+
+export const useSetSupplierBlocked = (pid: number) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { supplierId: number; block: boolean; reason?: string }) =>
+      vars.block
+        ? suppliersApi.block(pid, vars.supplierId, vars.reason ?? '')
+        : suppliersApi.unblock(pid, vars.supplierId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: supplierKeys.list(pid) }),
+  });
+};

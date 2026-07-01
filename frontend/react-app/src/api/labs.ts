@@ -25,4 +25,16 @@ export const labsApi = {
       .post<LabResponse>(`/projects/${projectId}/labs/${labId}/resend-confirmation`)
       .then((r) => r.data);
   },
+
+  // Block / unblock (QE, PM, or contractor). Block needs a reason.
+  block(projectId: number, labId: number, reason: string): Promise<LabResponse> {
+    return api
+      .post<LabResponse>(`/projects/${projectId}/labs/${labId}/block`, { reason })
+      .then((r) => r.data);
+  },
+  unblock(projectId: number, labId: number): Promise<LabResponse> {
+    return api
+      .post<LabResponse>(`/projects/${projectId}/labs/${labId}/unblock`)
+      .then((r) => r.data);
+  },
 };

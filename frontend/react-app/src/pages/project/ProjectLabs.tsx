@@ -10,9 +10,12 @@ import { Badge } from '../../components/ui/Badge';
 import { ErrorBox } from '../../components/ui/ErrorBox';
 import { Plus, Mail } from 'lucide-react';
 import { useProject } from '../../components/layout/ProjectLayout';
+import { useAuth } from '../../hooks/useAuth';
+import { BlockControl } from '../../components/BlockControl';
 import { getApiErrorMessage } from '../../api/client';
 import { toast } from '../../lib/toast';
-import { useCreateLab, useLabs, useResendLabConfirmation } from '../../queries/labs';
+import { canBlockEntities } from '../../lib/roles';
+import { useCreateLab, useLabs, useResendLabConfirmation, useSetLabBlocked } from '../../queries/labs';
 import { str } from '../../lib/coerce';
 import type { ConfirmationStatus, LabCreate, LabResponse } from '../../types/master';
 
@@ -37,12 +40,24 @@ const EMPTY: FormValues = { lab_name: '', lab_type: 'THIRD_PARTY', accreditation
 
 export const ProjectLabs: React.FC = () => {
   const { project } = useProject();
+  const { user } = useAuth();
   const pid = project.project_id;
   const canManage = project.access.can_manage_contractor_side;
+  const canBlock = canBlockEntities(user?.role);
 
   const { data: rows = [], isPending, error: loadError } = useLabs(pid);
   const createLab = useCreateLab(pid);
   const resend = useResendLabConfirmation(pid);
+  const setBlocked = useSetLabBlocked(pid);
+
+  const toggleBlock = async (l: LabResponse, reason?: string) => {
+    try {
+      await setBlocked.mutateAsync({ labId: l.lab_id, block: !l.is_blocked, reason });
+      toast.success(l.is_blocked ? `Unblocked ${l.lab_name}.` : `Blocked ${l.lab_name}.`);
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, 'Could not update the lab.'));
+    }
+  };
 
   const [showForm, setShowForm] = useState(false);
   const { register, handleSubmit, reset, formState: { errors } } = useForm<FormValues>({
@@ -136,11 +151,15 @@ export const ProjectLabs: React.FC = () => {
                     <td>{l.contact_email ?? l.contact_phone ?? '—'}</td>
                     <td>
                       <div className="qms-cell-actions">
-                        <Badge variant={CONF_VARIANT[l.status]}>{CONF_LABEL[l.status]}</Badge>
-                        {l.status === 'CONFIRMED' && l.confirmed_at && (
+                        {l.is_blocked ? (
+                          <Badge variant="fail" title={l.block_reason ?? undefined}>Blocked</Badge>
+                        ) : (
+                          <Badge variant={CONF_VARIANT[l.status]}>{CONF_LABEL[l.status]}</Badge>
+                        )}
+                        {!l.is_blocked && l.status === 'CONFIRMED' && l.confirmed_at && (
                           <span className="qms-text-sm text-muted">{new Date(l.confirmed_at).toLocaleDateString()}</span>
                         )}
-                        {canManage && l.status !== 'CONFIRMED' && l.contact_email && (
+                        {canManage && !l.is_blocked && l.status !== 'CONFIRMED' && l.contact_email && (
                           <Button
                             variant="ghost"
                             size="sm"
@@ -150,6 +169,14 @@ export const ProjectLabs: React.FC = () => {
                           >
                             {resend.isPending && resend.variables === l.lab_id ? 'Sending…' : 'Resend'}
                           </Button>
+                        )}
+                        {canBlock && (
+                          <BlockControl
+                            blocked={l.is_blocked}
+                            busy={setBlocked.isPending}
+                            onBlock={(reason) => toggleBlock(l, reason)}
+                            onUnblock={() => toggleBlock(l)}
+                          />
                         )}
                       </div>
                     </td>

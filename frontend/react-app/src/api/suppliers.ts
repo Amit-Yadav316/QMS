@@ -27,4 +27,16 @@ export const suppliersApi = {
       )
       .then((r) => r.data);
   },
+
+  // Block / unblock (QE, PM, or contractor). Block needs a reason.
+  block(projectId: number, supplierId: number, reason: string): Promise<SupplierResponse> {
+    return api
+      .post<SupplierResponse>(`/projects/${projectId}/suppliers/${supplierId}/block`, { reason })
+      .then((r) => r.data);
+  },
+  unblock(projectId: number, supplierId: number): Promise<SupplierResponse> {
+    return api
+      .post<SupplierResponse>(`/projects/${projectId}/suppliers/${supplierId}/unblock`)
+      .then((r) => r.data);
+  },
 };

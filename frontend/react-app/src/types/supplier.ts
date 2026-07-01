@@ -37,6 +37,8 @@ export interface SupplierResponse {
   is_active: boolean;
   status: ConfirmationStatus;
   confirmed_at: string | null;
+  is_blocked: boolean;
+  block_reason: string | null;
   mix_design_document_id: number | null;
   mix_design_document_name: string | null;
   mix_submission_token: string | null;
