@@ -122,6 +122,26 @@ class LabService:
         )
         return await self._to_response(lab)
 
+    async def set_blocked(
+        self,
+        project: Project,
+        lab_id: int,
+        user: User,
+        *,
+        blocked: bool,
+        reason: str | None = None,
+    ) -> LabResponse:
+        """Block (no new cube samples / report links) or unblock a lab."""
+        lab = await self.repo.get_by(TestingLab.lab_id == lab_id)
+        if not lab or lab.project_id != project.project_id:
+            raise NotFoundError("Lab")
+        lab.is_blocked = blocked
+        lab.block_reason = reason if blocked else None
+        lab.blocked_by = user.user_id if blocked else None
+        lab.blocked_at = datetime.now(UTC) if blocked else None
+        await self.session.flush()
+        return await self._to_response(lab)
+
     # ── Public confirmation handshake (no auth — token only) ────────────────────
 
     async def get_confirmation(self, token: str) -> LabConfirmationView:

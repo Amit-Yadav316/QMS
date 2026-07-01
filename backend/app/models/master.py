@@ -334,6 +334,17 @@ class Supplier(Base):
     contact_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     contact_phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # ── Block/unblock (Phase 5A): a QE/PM/contractor blocks a supplier with a
+    # reason so no NEW dispatches or mix-design requests go to it (in-flight items
+    # keep working); unblock clears it. ──
+    is_blocked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    block_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    blocked_by: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("auth.users.user_id"), nullable=True
+    )
+    blocked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     # ── Confirmation handshake (passwordless, token-based) ──
     # PENDING → CONFIRMED / DECLINED. The supplier never gets a portal account;
     # they confirm their details via a tokenised email link.
@@ -519,6 +530,16 @@ class TestingLab(Base):
     contact_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     contact_phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # ── Block/unblock (Phase 5A): a QE/PM/contractor blocks a lab with a reason so
+    # no NEW cube samples / report links go to it (in-flight items keep working). ──
+    is_blocked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    block_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    blocked_by: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("auth.users.user_id"), nullable=True
+    )
+    blocked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     # ── Confirmation handshake (passwordless, token-based) ──
     # PENDING → CONFIRMED / DECLINED. The lab never gets a portal account; they
     # confirm their details (and complete their profile) via a tokenised link.

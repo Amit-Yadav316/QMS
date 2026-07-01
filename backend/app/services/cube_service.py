@@ -26,6 +26,7 @@ from app.core import quality_engine
 from app.core.date_rules import ensure_not_after
 from app.core.email import send_lab_report_request_email
 from app.core.exceptions import (
+    EntityBlockedError,
     LabReportStateError,
     NotFoundError,
     UnsupportedFileTypeError,
@@ -444,6 +445,8 @@ class CubeService:
         lab = await self.session.get(TestingLab, lab_id)
         if not lab or lab.project_id != project_id:
             raise NotFoundError("Lab")
+        if lab.is_blocked:
+            raise EntityBlockedError("lab", lab.block_reason)
 
     async def _threshold_for(
         self, grade_id: int, test_age_days: int

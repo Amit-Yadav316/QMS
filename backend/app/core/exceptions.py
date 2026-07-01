@@ -188,6 +188,17 @@ class DateIntegrityError(HTTPException):
         )
 
 
+class EntityBlockedError(HTTPException):
+    """A blocked RMC supplier or testing lab was used for new work (dispatch,
+    mix-design request, or cube dispatch). Unblock it first."""
+
+    def __init__(self, kind: str, reason: str | None = None):
+        detail = f"This {kind} is blocked and can't be used for new work."
+        if reason:
+            detail += f" Reason: {reason}"
+        super().__init__(status_code=status.HTTP_400_BAD_REQUEST, detail=detail)
+
+
 class NCRStateError(HTTPException):
     """An NCR action was attempted that the current status doesn't allow — an
     illegal status transition, closing without a root cause or with corrective

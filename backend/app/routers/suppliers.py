@@ -9,11 +9,13 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user
+from app.core.exceptions import PermissionDeniedError
 from app.core.project_access import ensure_can_manage_contractor_side, require_project
 from app.database.session import get_db
-from app.models.auth import User
+from app.models.auth import User, UserRole
 from app.models.master import Project
 from app.schemas.master import (
+    BlockRequest,
     MixDesignResponse,
     RequiredGradeInfo,
     RequiredGradesUpdate,
@@ -24,6 +26,21 @@ from app.services.mixdesign_service import MixDesignService
 from app.services.supplier_service import SupplierService
 
 router = APIRouter(prefix="/projects", tags=["suppliers"])
+
+# A QE, project manager, or contractor (admin/user) may block/unblock an RMC or lab.
+_BLOCKER_ROLES = {
+    UserRole.QUALITY_ENGINEER,
+    UserRole.PROJECT_MANAGER,
+    UserRole.CONTRACTOR_ADMIN,
+    UserRole.CONTRACTOR_USER,
+}
+
+
+def ensure_can_block(user: User) -> None:
+    if user.role not in _BLOCKER_ROLES:
+        raise PermissionDeniedError(
+            "Only a quality engineer, project manager, or contractor can block/unblock"
+        )
 
 
 @router.post(
@@ -112,3 +129,35 @@ async def list_supplier_mix_designs(
 ):
     """Mix designs this supplier has submitted for the project."""
     return await MixDesignService(db).list_for_supplier(project, supplier_id)
+
+
+@router.post(
+    "/{project_id}/suppliers/{supplier_id}/block", response_model=SupplierResponse
+)
+async def block_supplier(
+    supplier_id: int,
+    data: BlockRequest,
+    project: Project = Depends(require_project),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Block a supplier (with a reason) from new dispatches / mix-design requests."""
+    ensure_can_block(current_user)
+    return await SupplierService(db).set_blocked(
+        project, supplier_id, current_user, blocked=True, reason=data.reason
+    )
+
+
+@router.post(
+    "/{project_id}/suppliers/{supplier_id}/unblock", response_model=SupplierResponse
+)
+async def unblock_supplier(
+    supplier_id: int,
+    project: Project = Depends(require_project),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    ensure_can_block(current_user)
+    return await SupplierService(db).set_blocked(
+        project, supplier_id, current_user, blocked=False
+    )

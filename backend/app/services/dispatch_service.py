@@ -21,7 +21,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.core.email import send_truck_dispatch_email, send_truck_result_email
-from app.core.exceptions import NotFoundError, PermissionDeniedError, TruckStateError
+from app.core.exceptions import (
+    EntityBlockedError,
+    NotFoundError,
+    PermissionDeniedError,
+    TruckStateError,
+)
 from app.core.security import create_invitation_token
 from app.models.auth import User
 from app.models.master import Grade, MixApprovalStatus, MixDesign, Project, Supplier
@@ -97,6 +102,8 @@ class DispatchService:
         supplier = await self.session.get(Supplier, data.supplier_id)
         if not supplier or supplier.project_id != pid:
             raise NotFoundError("Supplier")
+        if supplier.is_blocked:
+            raise EntityBlockedError("supplier", supplier.block_reason)
         if not supplier.contact_email:
             raise PermissionDeniedError(
                 "This supplier has no contact email — confirm the supplier "

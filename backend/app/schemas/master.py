@@ -156,12 +156,20 @@ class SupplierResponse(BaseModel):
     is_active: bool
     status: str
     confirmed_at: datetime | None
+    is_blocked: bool = False
+    block_reason: str | None = None
     mix_design_document_id: int | None = None
     mix_design_document_name: str | None = None
     mix_submission_token: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class BlockRequest(BaseModel):
+    """Reason a QE/PM/contractor gives when blocking an RMC supplier or lab."""
+
+    reason: str
 
 
 # ---------------------------------------------------------------------------
@@ -207,6 +215,8 @@ class LabResponse(BaseModel):
     is_active: bool
     status: str
     confirmed_at: datetime | None
+    is_blocked: bool = False
+    block_reason: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

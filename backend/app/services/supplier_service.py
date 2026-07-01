@@ -140,6 +140,26 @@ class SupplierService:
         )
         return await self._to_response(supplier)
 
+    async def set_blocked(
+        self,
+        project: Project,
+        supplier_id: int,
+        user: User,
+        *,
+        blocked: bool,
+        reason: str | None = None,
+    ) -> SupplierResponse:
+        """Block (no new dispatches / mix requests) or unblock a supplier."""
+        supplier = await self.repo.get_by(Supplier.supplier_id == supplier_id)
+        if not supplier or supplier.project_id != project.project_id:
+            raise NotFoundError("Supplier")
+        supplier.is_blocked = blocked
+        supplier.block_reason = reason if blocked else None
+        supplier.blocked_by = user.user_id if blocked else None
+        supplier.blocked_at = datetime.now(UTC) if blocked else None
+        await self.session.flush()
+        return await self._to_response(supplier)
+
     # ── Public confirmation handshake (no auth — token only) ────────────────────
 
     async def get_confirmation(self, token: str) -> SupplierConfirmationView:
