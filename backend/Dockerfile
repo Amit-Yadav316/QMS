@@ -39,4 +39,6 @@ ENV PATH="/app/.venv/bin:$PATH" \
 USER appuser
 EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Hosted platforms inject $PORT; the entrypoint migrates then serves on it.
+# (Local: `docker run -p 8000:8000 …` works with the default.)
+CMD ["sh", "scripts/start.sh"]

@@ -15,6 +15,7 @@ import app.models.transaction  # noqa: F401
 from alembic import context
 from app.config import settings
 from app.database.base import Base
+from app.database.engine import normalize_database_url
 
 config = context.config
 
@@ -65,8 +66,10 @@ def do_run_migrations(connection):
 
 async def run_async_migrations() -> None:
     """Connect to DB and run migrations directly."""
+    url, connect_args = normalize_database_url(settings.DATABASE_URL)
     connectable = create_async_engine(
-        settings.DATABASE_URL,
+        url,
+        connect_args=connect_args,
         poolclass=pool.NullPool,
     )
 

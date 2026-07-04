@@ -33,6 +33,18 @@ class Settings(BaseSettings):
     RAG_TOP_K: int = 3
     RAG_MIN_SIMILARITY: float = 0.0  # keep all neighbours by default; raise to prune
 
+    # ── Hosted LLM (OpenAI-compatible) ───────────────────────────────────────
+    # Local Ollama is the default for dev. When AI_PROVIDER="openai" the analyst
+    # agent AND the RAG embedder call an OpenAI-compatible HTTP API instead —
+    # e.g. Google Gemini's compatibility endpoint (one key covers chat + embed).
+    # Swapping providers (Groq, Cerebras, Mistral, …) = changing these values,
+    # no code change. See app/ai/llm.py + app/ai/embeddings.py.
+    AI_PROVIDER: str = "ollama"  # "ollama" | "openai"
+    LLM_BASE_URL: str = "https://generativelanguage.googleapis.com/v1beta/openai"
+    LLM_MODEL: str = "gemini-2.5-flash"
+    LLM_API_KEY: str = ""
+    EMBED_MODEL: str = "gemini-embedding-001"
+
     # JWT
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
