@@ -1,0 +1,36 @@
+# Render blueprint for the Strata backend (free tier, Docker).
+# Deploy: Render Dashboard → New → Blueprint → pick this repo. Render reads this
+# file, builds backend/Dockerfile, and prompts for the `sync: false` secrets.
+#
+# The database is external (Neon) — set DATABASE_URL below to Neon's DIRECT
+# connection string. The frontend is deployed separately on Vercel.
+services:
+  - type: web
+    name: strata-backend
+    runtime: docker
+    plan: free
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: AI_PROVIDER
+        value: openai
+      # Auto-generated strong secret for JWT signing.
+      - key: SECRET_KEY
+        generateValue: true
+      # ── Fill these in the Render dashboard (kept out of git) ──────────────
+      - key: DATABASE_URL          # Neon DIRECT connection string
+        sync: false
+      - key: FRONTEND_URL          # your Vercel URL, e.g. https://strata.vercel.app
+        sync: false
+      - key: LLM_API_KEY           # Google AI Studio (Gemini) API key
+        sync: false
+      - key: MAIL_USERNAME
+        sync: false
+      - key: MAIL_PASSWORD
+        sync: false
+      - key: MAIL_FROM
+        sync: false
