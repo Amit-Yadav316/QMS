@@ -11,10 +11,13 @@ dispatch, truck result, lab-report request, lab reminder.
 
 from pathlib import Path
 
+import httpx
 from fastapi_mail import ConnectionConfig, FastMail, MessageSchema, MessageType
 from jinja2 import Environment, FileSystemLoader
 
 from app.config import settings
+
+BREVO_API_URL = "https://api.brevo.com/v3/smtp/email"
 
 # ---------------------------------------------------------------------------
 # Mail connection config
@@ -50,6 +53,38 @@ def _render_template(template_name: str, context: dict) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Transport dispatcher — every sender routes its MessageSchema through _send,
+# which picks SMTP (fastapi-mail) or Brevo's HTTPS API based on MAIL_PROVIDER.
+# Brevo is required on hosts that block outbound SMTP ports (e.g. Render free).
+# ---------------------------------------------------------------------------
+
+async def _send_via_brevo(message: MessageSchema) -> None:
+    """Send one message through Brevo's transactional email HTTP API (port 443)."""
+    payload = {
+        "sender": {"name": settings.MAIL_FROM_NAME, "email": settings.MAIL_FROM},
+        "to": [{"email": str(r)} for r in message.recipients],
+        "subject": message.subject,
+        "htmlContent": message.body,
+    }
+    headers = {
+        "api-key": settings.BREVO_API_KEY,
+        "accept": "application/json",
+        "content-type": "application/json",
+    }
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.post(BREVO_API_URL, json=payload, headers=headers)
+        resp.raise_for_status()
+
+
+async def _send(message: MessageSchema) -> None:
+    """Deliver via the configured provider. Callers keep building MessageSchema."""
+    if settings.MAIL_PROVIDER == "brevo":
+        await _send_via_brevo(message)
+    else:
+        await fastmail.send_message(message)
+
+
+# ---------------------------------------------------------------------------
 # Email senders
 # ---------------------------------------------------------------------------
 
@@ -80,7 +115,7 @@ async def send_invitation_email(
         body=html_body,
         subtype=MessageType.html,
     )
-    await fastmail.send_message(message)
+    await _send(message)
 
 
 async def send_otp_email(
@@ -101,7 +136,7 @@ async def send_otp_email(
         body=html_body,
         subtype=MessageType.html,
     )
-    await fastmail.send_message(message)
+    await _send(message)
 
 
 async def _send_confirmation_email(
@@ -128,7 +163,7 @@ async def _send_confirmation_email(
         body=html_body,
         subtype=MessageType.html,
     )
-    await fastmail.send_message(message)
+    await _send(message)
 
 
 async def send_supplier_confirmation_email(
@@ -180,7 +215,7 @@ async def send_mix_design_request_email(
         body=html_body,
         subtype=MessageType.html,
     )
-    await fastmail.send_message(message)
+    await _send(message)
 
 
 async def send_rmc_issue_email(
@@ -205,7 +240,7 @@ async def send_rmc_issue_email(
         body=html_body,
         subtype=MessageType.html,
     )
-    await fastmail.send_message(msg)
+    await _send(msg)
 
 
 async def send_lab_confirmation_email(
@@ -260,7 +295,7 @@ async def send_truck_dispatch_email(
         body=html_body,
         subtype=MessageType.html,
     )
-    await fastmail.send_message(message)
+    await _send(message)
 
 
 async def send_truck_result_email(
@@ -294,7 +329,7 @@ async def send_truck_result_email(
         body=html_body,
         subtype=MessageType.html,
     )
-    await fastmail.send_message(message)
+    await _send(message)
 
 
 async def send_lab_report_request_email(
@@ -334,7 +369,7 @@ async def send_lab_report_request_email(
         body=html_body,
         subtype=MessageType.html,
     )
-    await fastmail.send_message(message)
+    await _send(message)
 
 
 async def send_lab_reminder_email(
@@ -363,4 +398,4 @@ async def send_lab_reminder_email(
         body=html_body,
         subtype=MessageType.html,
     )
-    await fastmail.send_message(message)
+    await _send(message)
