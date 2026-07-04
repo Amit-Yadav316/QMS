@@ -65,6 +65,44 @@ def cosine_similarity(a: list[float], b: list[float]) -> float:
     return dot / (na * nb)
 
 
+class OpenAICompatEmbedder:
+    """Calls any OpenAI-compatible /embeddings endpoint (default: Gemini).
+
+    Same seam as the LLM client — Gemini's compatibility endpoint serves
+    embeddings at ``…/v1beta/openai/embeddings`` with ``gemini-embedding-001``, so
+    one hosted key powers both the analyst agent and RAG."""
+
+    def __init__(
+        self,
+        *,
+        model: str | None = None,
+        base_url: str | None = None,
+        api_key: str | None = None,
+        timeout: float | None = None,
+    ):
+        self.model = model or settings.EMBED_MODEL
+        self.base_url = (base_url or settings.LLM_BASE_URL).rstrip("/")
+        self.api_key = api_key or settings.LLM_API_KEY
+        self.timeout = timeout or settings.AGENT_TIMEOUT_SECONDS
+
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+        if not texts:
+            return []
+        payload = {"model": self.model, "input": texts}
+        headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            resp = await client.post(f"{self.base_url}/embeddings", json=payload, headers=headers)
+            resp.raise_for_status()
+        data = resp.json().get("data") or []
+        return [[float(x) for x in item.get("embedding") or []] for item in data]
+
+
 def get_embedder() -> Embedder:
-    """FastAPI dependency — the live embedder. Overridden with a fake in tests."""
+    """FastAPI dependency — the live embedder. Overridden with a fake in tests.
+
+    Mirrors get_llm: Ollama for dev, or a hosted OpenAI-compatible embeddings API
+    (Google Gemini) when AI_PROVIDER=openai.
+    """
+    if settings.AI_PROVIDER == "openai":
+        return OpenAICompatEmbedder()
     return OllamaEmbedder()
