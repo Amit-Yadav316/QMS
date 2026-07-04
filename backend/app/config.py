@@ -51,6 +51,11 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
 
     # Email
+    # MAIL_PROVIDER selects the transport: "smtp" (fastapi-mail → Gmail, good for
+    # local dev) or "brevo" (HTTPS API on port 443). Managed hosts like Render's
+    # free tier BLOCK outbound SMTP ports, so hosted deploys must use "brevo".
+    MAIL_PROVIDER: str = "smtp"  # "smtp" | "brevo"
+    BREVO_API_KEY: str = ""      # required when MAIL_PROVIDER=brevo
     MAIL_USERNAME: str
     MAIL_PASSWORD: str
     MAIL_FROM: str

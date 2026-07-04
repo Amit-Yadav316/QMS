@@ -18,6 +18,9 @@ services:
         value: production
       - key: AI_PROVIDER
         value: openai
+      # Render free blocks outbound SMTP → use Brevo's HTTPS email API.
+      - key: MAIL_PROVIDER
+        value: brevo
       # Auto-generated strong secret for JWT signing.
       - key: SECRET_KEY
         generateValue: true
@@ -28,9 +31,12 @@ services:
         sync: false
       - key: LLM_API_KEY           # Google AI Studio (Gemini) API key
         sync: false
+      - key: BREVO_API_KEY         # brevo.com → SMTP & API → API Keys
+        sync: false
+      - key: MAIL_FROM             # verified Brevo sender address
+        sync: false
+      # Unused by Brevo but required by config; set to any placeholder.
       - key: MAIL_USERNAME
         sync: false
       - key: MAIL_PASSWORD
-        sync: false
-      - key: MAIL_FROM
         sync: false

@@ -51,10 +51,19 @@ Migrations run automatically on backend deploy (`scripts/start.sh` →
    | `DATABASE_URL` | Neon direct connection string (step 1) |
    | `FRONTEND_URL` | your Vercel URL (fill after step 3, then redeploy) |
    | `LLM_API_KEY` | Gemini key (step 4) |
-   | `MAIL_USERNAME` / `MAIL_PASSWORD` / `MAIL_FROM` | Gmail + [app password](https://support.google.com/accounts/answer/185833) |
+   | `BREVO_API_KEY` | Brevo API key (see email note below) |
+   | `MAIL_FROM` | your verified Brevo sender address |
+   | `MAIL_USERNAME` / `MAIL_PASSWORD` | any placeholder (unused with Brevo, but required by config) |
 
-   `SECRET_KEY` is auto-generated; `ENVIRONMENT=production` and `AI_PROVIDER=openai`
-   are preset.
+   `SECRET_KEY` is auto-generated; `ENVIRONMENT=production`, `AI_PROVIDER=openai`,
+   and `MAIL_PROVIDER=brevo` are preset.
+
+   > **Email — why not Gmail SMTP?** Render's free tier **blocks outbound SMTP
+   > ports** (25/465/587), so Gmail SMTP times out. The backend uses Brevo's HTTPS
+   > email API instead (`MAIL_PROVIDER=brevo`). Create a free account at
+   > [brevo.com](https://www.brevo.com), verify a sender email (set it as
+   > `MAIL_FROM`), and generate an API key (Brevo → **SMTP & API → API Keys**) for
+   > `BREVO_API_KEY`. Locally you can keep `MAIL_PROVIDER=smtp` with Gmail.
 
 **Option B — manual.** New → **Web Service** → this repo → **Root Directory**
 `backend`, **Runtime** Docker, **Health Check Path** `/health`, **Plan** Free.
