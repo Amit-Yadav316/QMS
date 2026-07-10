@@ -3,7 +3,6 @@ import { Plus } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { ErrorBox } from '../../components/ui/ErrorBox';
 import { useProject } from '../../components/layout/ProjectLayout';
-import { useAuth } from '../../hooks/useAuth';
 import { getApiErrorMessage } from '../../api/client';
 import { CastSampleForm } from '../../components/cube/CastSampleForm';
 import { CubeSampleList } from '../../components/cube/CubeSampleList';
@@ -12,9 +11,8 @@ import '../../components/cube/cube.css';
 
 export const ProjectCubeTests: React.FC = () => {
   const { project } = useProject();
-  const { user } = useAuth();
   const pid = project.project_id;
-  const isQE = user?.role === 'QUALITY_ENGINEER';
+  const isQE = project.access.project_role === 'QUALITY_ENGINEER';
 
   const samplesQuery = useCubeSamples(pid);
   const poursQuery = usePours(pid);

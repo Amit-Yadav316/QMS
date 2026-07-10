@@ -12,7 +12,6 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { ErrorBox } from '../../components/ui/ErrorBox';
 import { useProject } from '../../components/layout/ProjectLayout';
-import { useAuth } from '../../hooks/useAuth';
 import { getApiErrorMessage } from '../../api/client';
 import { toast } from '../../lib/toast';
 import { useQEInbox, useRecordInsitu } from '../../queries/qeInbox';
@@ -132,13 +131,12 @@ const InsituReviewCard: React.FC<{ pid: number; item: QEReviewItem }> = ({ pid, 
 
 export const QEInbox: React.FC = () => {
   const { project } = useProject();
-  const { user } = useAuth();
   const pid = project.project_id;
-  const isQE = user?.role === 'QUALITY_ENGINEER';
+  const isQE = project.access.project_role === 'QUALITY_ENGINEER';
 
   const { data: items = [], isPending, error } = useQEInbox(pid, isQE);
 
-  if (user && !isQE) {
+  if (!isQE) {
     return <Navigate to={`/app/projects/${pid}`} replace />;
   }
 

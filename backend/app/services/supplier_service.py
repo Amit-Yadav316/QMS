@@ -14,7 +14,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.core.email import send_rmc_issue_email, send_supplier_confirmation_email
-from app.core.exceptions import NotFoundError, PermissionDeniedError
+from app.core.exceptions import (
+    NoAcceptedContractorError,
+    NotFoundError,
+    PermissionDeniedError,
+    TruckStateError,
+)
+from app.core.project_access import contractor_org_ids
 from app.core.security import create_invitation_token
 from app.models.auth import User
 from app.models.master import Document, Project, Supplier
@@ -86,11 +92,28 @@ class SupplierService:
         await self._validate_mix_design_document(
             data.mix_design_document_id, project.project_id
         )
+        # When the client registers (project.registration_by == CLIENT), the RMC
+        # is attached to the project's accepted contractor and starts PENDING
+        # their approval. Otherwise the contractor registers it themselves.
+        if project.registration_by == "CLIENT":
+            contractors = await contractor_org_ids(
+                self.session, project.project_id, accepted_only=True
+            )
+            if not contractors:
+                raise NoAcceptedContractorError()
+            contractor_org_id = sorted(contractors)[0]
+            registered_by, approval_status = "CLIENT", "PENDING"
+        else:
+            contractor_org_id = user.org_id
+            registered_by, approval_status = "CONTRACTOR", "NOT_REQUIRED"
+
         token = create_invitation_token()
         sent_at = datetime.now(UTC) if data.contact_email else None
         supplier = Supplier(
-            contractor_org_id=user.org_id,
+            contractor_org_id=contractor_org_id,
             project_id=project.project_id,
+            registered_by=registered_by,
+            approval_status=approval_status,
             status="PENDING",
             confirmation_token=token,
             confirmation_sent_at=sent_at,
@@ -181,6 +204,29 @@ class SupplierService:
         supplier.block_reason = reason if blocked else None
         supplier.blocked_by = user.user_id if blocked else None
         supplier.blocked_at = datetime.now(UTC) if blocked else None
+        await self.session.flush()
+        return await self._to_response(supplier)
+
+    async def set_approval(
+        self,
+        project: Project,
+        supplier_id: int,
+        user: User,
+        *,
+        accepted: bool,
+        reason: str | None = None,
+    ) -> SupplierResponse:
+        """The contractor accepts / rejects a client-registered RMC. Only makes
+        sense for client-registered ones (contractor-registered need no approval)."""
+        supplier = await self.repo.get_by(Supplier.supplier_id == supplier_id)
+        if not supplier or supplier.project_id != project.project_id:
+            raise NotFoundError("Supplier")
+        if supplier.registered_by != "CLIENT":
+            raise TruckStateError(
+                "This RMC was registered by the contractor and needs no approval"
+            )
+        supplier.approval_status = "ACCEPTED" if accepted else "REJECTED"
+        supplier.approval_reason = None if accepted else reason
         await self.session.flush()
         return await self._to_response(supplier)
 

@@ -83,7 +83,7 @@ POUR_PLAN = [
     (1, 0, "RAFT", "M40", "s2", "PASS", "2026-05-14", "2026-06-11", "reject"),
     (1, 1, "BEAM", "M25", "s1", "CRITICAL", "2026-05-18", "2026-06-15", "accept"),
     (1, 2, "COLUMN", "M35", "s2", "PASS", "2026-05-22", "2026-06-19", "accept"),
-    (0, 3, "SLAB", "M30", "s1", "PASS", "2026-06-01", "2026-06-22", None),
+    (0, 3, "SLAB", "M30", "s1", "PASS", "2026-06-01", "2026-06-22", "accept"),
     (1, 3, "SHEAR_WALL", "M40", "s2", "FAIL", "2026-06-05", "2026-06-24", "accept"),
 ]
 
@@ -144,8 +144,10 @@ async def _create_people() -> dict:
 
         client_admin = user(client_org.org_id, CLIENT_ADMIN_EMAIL, "Anita Rao", UserRole.CLIENT_ADMIN, True)
         contractor_admin = user(contractor_org.org_id, CONTRACTOR_ADMIN_EMAIL, "Vikram Shah", UserRole.CONTRACTOR_ADMIN, True)
-        qe = user(contractor_org.org_id, QE_EMAIL, "Priya Nair", UserRole.QUALITY_ENGINEER)
-        supervisor = user(contractor_org.org_id, SUPERVISOR_EMAIL, "Ramesh Iyer", UserRole.SUPERVISOR)
+        # Team members are generic org users; their QE / Supervisor *designation*
+        # is per-project (the ProjectMember rows below), which drives capabilities.
+        qe = user(contractor_org.org_id, QE_EMAIL, "Priya Nair", UserRole.CONTRACTOR_USER)
+        supervisor = user(contractor_org.org_id, SUPERVISOR_EMAIL, "Ramesh Iyer", UserRole.CONTRACTOR_USER)
         await s.flush()
 
         ids = {
@@ -183,25 +185,27 @@ async def _link_contractor_and_members(pid: int, ids: dict) -> None:
         await s.commit()
 
 
-async def _run_truck(c, qe_tok, sup_tok, pid, *, pour_id, supplier_id, grade_id, volume, mode):
+async def _run_truck(c, qe_tok, sup_tok, pid, *, supplier_id, grade_id, volume, mode):
+    """Raise + drive one delivery. Returns the dispatch_id of an ACCEPTED delivery
+    (ready to record a pour from), or None if it was rejected at the gate."""
     created = _ok(
         await c.post(
             f"{API}/projects/{pid}/dispatches",
-            json={"pour_id": pour_id, "supplier_id": supplier_id,
-                  "grade_id": grade_id, "volume_ordered_cum": volume},
+            json={"supplier_id": supplier_id, "grade_id": grade_id,
+                  "volume_ordered_cum": volume},
             headers=_bearer(qe_tok),
         ),
         "raise dispatch",
     ).json()
-    token = created["truck"]["token"]
+    dispatch_id, token = created["dispatch_id"], created["truck"]["token"]
     _ok(
         await c.post(
             f"{API}/external/dispatch?token={token}",
             json={
-                "vehicle_number": f"KA01AB{1000 + pour_id}",
+                "vehicle_number": f"KA01AB{1000 + dispatch_id}",
                 "driver_name": "Suresh K.",
-                "batch_number": f"BN-{pour_id:04d}",
-                "challan_number": f"CH-{pour_id:04d}",
+                "batch_number": f"BN-{dispatch_id:04d}",
+                "challan_number": f"CH-{dispatch_id:04d}",
                 "volume_cum": volume,
                 "wc_ratio_actual": 0.45,
                 "slump_at_plant_mm": 120,
@@ -218,18 +222,27 @@ async def _run_truck(c, qe_tok, sup_tok, pid, *, pour_id, supplier_id, grade_id,
             ),
             "reject truck",
         )
-    else:
-        _ok(
-            await c.post(
-                f"{API}/projects/{pid}/gate/{token}/arrive",
-                json={"slump_at_site_mm": 110}, headers=_bearer(sup_tok),
-            ),
-            "arrive truck",
-        )
-        _ok(
-            await c.post(f"{API}/projects/{pid}/gate/{token}/accept", headers=_bearer(sup_tok)),
-            "accept truck",
-        )
+        return None
+    _ok(
+        await c.post(
+            f"{API}/projects/{pid}/gate/{token}/arrive",
+            json={"slump_at_site_mm": 110}, headers=_bearer(sup_tok),
+        ),
+        "arrive truck",
+    )
+    _ok(
+        await c.post(f"{API}/projects/{pid}/gate/{token}/accept", headers=_bearer(sup_tok)),
+        "accept truck",  # → PENDING_QE
+    )
+    _ok(
+        await c.post(
+            f"{API}/projects/{pid}/dispatches/{dispatch_id}/insitu",
+            json={"measured_slump_mm": 105, "decision": "APPROVED"},
+            headers=_bearer(qe_tok),
+        ),
+        "qe in-situ sign-off",  # → ACCEPTED
+    )
+    return dispatch_id
 
 
 async def _run_cube(c, qe_tok, pid, *, pour_id, grade_min, outcome, cast_date, test_date, lab_id, ref):
@@ -443,6 +456,7 @@ async def seed() -> None:
                 )
 
         ncr_pours = 0
+        pours_created = 0
         for seq, (ti, fi, comp, gname, skey, outcome, cast, test, truck) in enumerate(POUR_PLAN, 1):
             tower = towers[ti]
             tower_floors = floors[tower["tower_id"]]
@@ -452,30 +466,34 @@ async def seed() -> None:
             supplier = suppliers[skey]
             volume = 30.0 + seq
 
+            # Dispatch first — the pour is recorded from the accepted delivery.
+            dispatch_id = None
+            if truck:
+                dispatch_id = await _run_truck(
+                    c, qe_tok, sup_tok, pid,
+                    supplier_id=supplier["supplier_id"], grade_id=grade["grade_id"],
+                    volume=volume, mode=truck,
+                )
+            if dispatch_id is None:
+                # A rejected (or absent) delivery leaves no pour to record.
+                continue
+
             pour = _ok(
                 await c.post(
                     f"{API}/projects/{pid}/pours",
                     json={
+                        "dispatch_id": dispatch_id,
                         "tower_id": tower["tower_id"],
                         "floor_id": floor["floor_id"],
                         "component_id": component["component_id"],
-                        "grade_id": grade["grade_id"],
-                        "supplier_horizontal_id": supplier["supplier_id"],
                         "pour_date": cast,
-                        "volume_cum": volume,
                         "pour_reference": f"PC-{tower['tower_name'].split()[-1]}-{floor['floor_label']}-{comp[:3]}-{seq:03d}",
                     },
                     headers=_bearer(qe_tok),
                 ),
-                "create pour",
+                "record pour",
             ).json()
-
-            if truck:
-                await _run_truck(
-                    c, qe_tok, sup_tok, pid,
-                    pour_id=pour["pour_id"], supplier_id=supplier["supplier_id"],
-                    grade_id=grade["grade_id"], volume=volume, mode=truck,
-                )
+            pours_created += 1
 
             await _run_cube(
                 c, qe_tok, pid,
@@ -488,7 +506,7 @@ async def seed() -> None:
 
         await _work_one_ncr(c, qe_tok, pid)
 
-        _print_summary(pid, len(POUR_PLAN), ncr_pours)
+        _print_summary(pid, pours_created, ncr_pours)
 
 
 def _print_summary(pid: int, pours: int, ncrs: int) -> None:
