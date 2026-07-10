@@ -45,7 +45,10 @@ export const ProjectDispatches: React.FC = () => {
   const [volume, setVolume] = useState('');
   const [copiedId, setCopiedId] = useState<number | null>(null);
 
-  const openSuppliers = suppliers.filter((s) => !s.is_blocked);
+  // Only usable RMCs: not blocked, and (if client-registered) contractor-approved.
+  const openSuppliers = suppliers.filter(
+    (s) => !s.is_blocked && (s.approval_status === 'NOT_REQUIRED' || s.approval_status === 'ACCEPTED'),
+  );
   const canSubmit = supplierId !== '' && gradeId !== '' && volume.trim() !== '' && Number(volume) > 0;
 
   const handleCreate = async (e: React.FormEvent) => {

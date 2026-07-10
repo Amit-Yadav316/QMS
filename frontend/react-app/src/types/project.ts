@@ -33,11 +33,15 @@ export interface TowerResponse {
   no_of_flats: number | null;
 }
 
+export type RegistrationBy = 'CONTRACTOR' | 'CLIENT';
+
 export interface ProjectCreate {
   project_name: string;
   project_type?: ProjectType | null;
   project_code?: string | null;
   status?: ProjectStatus;
+  // Who registers RMC suppliers + labs: CONTRACTOR (default) or CLIENT.
+  registration_by?: RegistrationBy;
   gst_number?: string | null;
   // Location
   address_line1?: string | null;
@@ -76,6 +80,7 @@ export interface ProjectResponse {
   project_code: string | null;
   project_location: string | null;
   status: ProjectStatus;
+  registration_by: RegistrationBy;
   city: string | null;
   state: string | null;
   start_date: string | null;
