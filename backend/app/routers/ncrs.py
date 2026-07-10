@@ -10,10 +10,9 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user
-from app.core.exceptions import PermissionDeniedError
-from app.core.project_access import require_project
+from app.core.project_access import ensure_project_role, require_project
 from app.database.session import get_db
-from app.models.auth import User, UserRole
+from app.models.auth import ProjectRole, User
 from app.models.master import Project
 from app.schemas.quality import (
     CorrectiveActionCreate,
@@ -29,12 +28,6 @@ from app.services.ncr_service import NCRService
 
 router = APIRouter(prefix="/projects", tags=["quality"])
 
-
-def _ensure_quality_engineer(user: User) -> None:
-    if user.role != UserRole.QUALITY_ENGINEER:
-        raise PermissionDeniedError(
-            "Only a quality engineer can manage the NCR lifecycle"
-        )
 
 
 # ── Reads (any project viewer) ────────────────────────────────────────────────
@@ -68,7 +61,7 @@ async def update_ncr(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    _ensure_quality_engineer(current_user)
+    await ensure_project_role(db, current_user, project, ProjectRole.QUALITY_ENGINEER)
     return await NCRService(db).update_ncr(project, ncr_id, data, current_user)
 
 
@@ -84,7 +77,7 @@ async def add_corrective_action(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    _ensure_quality_engineer(current_user)
+    await ensure_project_role(db, current_user, project, ProjectRole.QUALITY_ENGINEER)
     return await NCRService(db).add_corrective_action(
         project, ncr_id, data, current_user
     )
@@ -102,7 +95,7 @@ async def update_corrective_action(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    _ensure_quality_engineer(current_user)
+    await ensure_project_role(db, current_user, project, ProjectRole.QUALITY_ENGINEER)
     return await NCRService(db).update_corrective_action(
         project, ncr_id, action_id, data, current_user
     )
@@ -120,5 +113,5 @@ async def add_penalty(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    _ensure_quality_engineer(current_user)
+    await ensure_project_role(db, current_user, project, ProjectRole.QUALITY_ENGINEER)
     return await NCRService(db).add_penalty(project, ncr_id, data, current_user)

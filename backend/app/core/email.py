@@ -399,3 +399,28 @@ async def send_lab_reminder_email(
         subtype=MessageType.html,
     )
     await _send(message)
+
+
+async def send_project_assignment_email(
+    member_email: str,
+    member_name: str | None,
+    assigned_by_name: str,
+    project_name: str,
+    role: str,
+) -> None:
+    """Sent when a team member is assigned a designation on a project."""
+    html_body = _render_template("project_assignment.html", {
+        "greeting": f"Hi {member_name}," if member_name else "Hi,",
+        "assigned_by_name": assigned_by_name,
+        "project_name": project_name,
+        "role": role.replace("_", " ").title(),
+        "app_url": f"{settings.FRONTEND_URL}/app",
+    })
+
+    message = MessageSchema(
+        subject=f"You've been assigned to {project_name} on Strata",
+        recipients=[member_email],
+        body=html_body,
+        subtype=MessageType.html,
+    )
+    await _send(message)

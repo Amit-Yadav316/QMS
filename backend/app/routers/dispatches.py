@@ -13,10 +13,9 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user
-from app.core.exceptions import PermissionDeniedError
-from app.core.project_access import require_project
+from app.core.project_access import ensure_project_role, require_project
 from app.database.session import get_db
-from app.models.auth import User, UserRole
+from app.models.auth import ProjectRole, User
 from app.models.master import Project
 from app.schemas.transaction import (
     ActionRequired,
@@ -34,18 +33,6 @@ from app.services.dispatch_service import DispatchService
 router = APIRouter(prefix="/projects", tags=["dispatches"])
 
 
-def _ensure_quality_engineer(user: User) -> None:
-    if user.role != UserRole.QUALITY_ENGINEER:
-        raise PermissionDeniedError(
-            "Only a quality engineer can raise a concrete dispatch"
-        )
-
-
-def _ensure_supervisor(user: User) -> None:
-    if user.role != UserRole.SUPERVISOR:
-        raise PermissionDeniedError("Only a site supervisor can work the gate")
-
-
 # ── Dispatches (Quality Engineer raises; any viewer reads) ───────────────────
 
 
@@ -58,7 +45,7 @@ async def create_dispatch(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    _ensure_quality_engineer(current_user)
+    await ensure_project_role(db, current_user, project, ProjectRole.QUALITY_ENGINEER)
     return await DispatchService(db).create(data, project, current_user)
 
 
@@ -91,7 +78,7 @@ async def resend_dispatch(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    _ensure_quality_engineer(current_user)
+    await ensure_project_role(db, current_user, project, ProjectRole.QUALITY_ENGINEER)
     return await DispatchService(db).resend(project, dispatch_id, current_user)
 
 
@@ -105,7 +92,7 @@ async def gate_lookup(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    _ensure_supervisor(current_user)
+    await ensure_project_role(db, current_user, project, ProjectRole.SUPERVISOR)
     return await DispatchService(db).gate_view(project, token)
 
 
@@ -117,7 +104,7 @@ async def gate_arrive(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    _ensure_supervisor(current_user)
+    await ensure_project_role(db, current_user, project, ProjectRole.SUPERVISOR)
     return await DispatchService(db).arrive(project, token, data)
 
 
@@ -128,7 +115,7 @@ async def gate_accept(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    _ensure_supervisor(current_user)
+    await ensure_project_role(db, current_user, project, ProjectRole.SUPERVISOR)
     return await DispatchService(db).accept(project, token, current_user)
 
 
@@ -140,7 +127,7 @@ async def gate_reject(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    _ensure_supervisor(current_user)
+    await ensure_project_role(db, current_user, project, ProjectRole.SUPERVISOR)
     return await DispatchService(db).reject(project, token, current_user, data)
 
 
@@ -155,7 +142,7 @@ async def gate_action_required(
     db: AsyncSession = Depends(get_db),
 ):
     """Supervisor flags a mismatch on an admitted truck → the QE's inbox."""
-    _ensure_supervisor(current_user)
+    await ensure_project_role(db, current_user, project, ProjectRole.SUPERVISOR)
     return await DispatchService(db).raise_action(project, token, data, current_user)
 
 
@@ -169,7 +156,7 @@ async def qe_inbox(
     db: AsyncSession = Depends(get_db),
 ):
     """Deliveries awaiting the QE's in-situ sign-off (PENDING_QE)."""
-    _ensure_quality_engineer(current_user)
+    await ensure_project_role(db, current_user, project, ProjectRole.QUALITY_ENGINEER)
     return await DispatchService(db).qe_inbox(project)
 
 
@@ -179,7 +166,7 @@ async def qe_inbox_count(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    _ensure_quality_engineer(current_user)
+    await ensure_project_role(db, current_user, project, ProjectRole.QUALITY_ENGINEER)
     return QEInboxCount(count=await DispatchService(db).qe_inbox_count(project))
 
 
@@ -195,7 +182,7 @@ async def record_insitu(
 ):
     """QE records the in-situ slump test + decision; APPROVE accepts + credits the
     pour (slump must pass), REJECT notifies the RMC."""
-    _ensure_quality_engineer(current_user)
+    await ensure_project_role(db, current_user, project, ProjectRole.QUALITY_ENGINEER)
     return await DispatchService(db).record_insitu(
         project, dispatch_id, data, current_user
     )

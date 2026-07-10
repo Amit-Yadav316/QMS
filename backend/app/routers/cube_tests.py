@@ -11,10 +11,9 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user
-from app.core.exceptions import PermissionDeniedError
-from app.core.project_access import require_project
+from app.core.project_access import ensure_project_role, require_project
 from app.database.session import get_db
-from app.models.auth import User, UserRole
+from app.models.auth import ProjectRole, User
 from app.models.master import Project
 from app.schemas.lab_report import LabReportLink
 from app.schemas.quality import CubeSampleCreate, CubeSampleResponse
@@ -22,12 +21,6 @@ from app.services.cube_service import CubeService
 
 router = APIRouter(prefix="/projects", tags=["quality"])
 
-
-def _ensure_quality_engineer(user: User) -> None:
-    if user.role != UserRole.QUALITY_ENGINEER:
-        raise PermissionDeniedError(
-            "Only a quality engineer can cast cube samples or manage lab reports"
-        )
 
 
 # ── Samples ──────────────────────────────────────────────────────────────────
@@ -47,7 +40,7 @@ async def cast_sample(
 ):
     """Cast a cube sample from a pour. When a lab with a contact email is set,
     this also dispatches the sample — emailing the lab its report link."""
-    _ensure_quality_engineer(current_user)
+    await ensure_project_role(db, current_user, project, ProjectRole.QUALITY_ENGINEER)
     return await CubeService(db).create_sample(project, pour_id, data, current_user)
 
 
@@ -86,7 +79,7 @@ async def get_report_link(
 ):
     """The lab's tokenised report URL for this sample, for the QE to copy/share.
     Mints a token if the sample doesn't have one yet. Does not send email."""
-    _ensure_quality_engineer(current_user)
+    await ensure_project_role(db, current_user, project, ProjectRole.QUALITY_ENGINEER)
     return await CubeService(db).get_report_link(project, sample_id, current_user)
 
 
@@ -102,5 +95,5 @@ async def resend_report_link(
 ):
     """Re-email the lab its report link — the manual nudge when a 7/14/28-day
     milestone is due. (No automated scheduler; the link itself is long-lived.)"""
-    _ensure_quality_engineer(current_user)
+    await ensure_project_role(db, current_user, project, ProjectRole.QUALITY_ENGINEER)
     return await CubeService(db).resend_report_link(project, sample_id, current_user)

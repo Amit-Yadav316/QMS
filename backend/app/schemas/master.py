@@ -114,6 +114,12 @@ class ProjectResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ProjectStatusUpdate(BaseModel):
+    """The owning client admin sets a project's lifecycle status. Completing a
+    project frees its assigned team members for reassignment."""
+    status: ProjectStatus
+
+
 # ---------------------------------------------------------------------------
 # Suppliers
 # ---------------------------------------------------------------------------
@@ -227,8 +233,9 @@ class LabResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 class ProjectMemberCreate(BaseModel):
-    """Assign someone to a project. If a user with this email already exists in
-    the caller's org they're assigned directly; otherwise they're invited."""
+    """Assign an existing team member to a project with a per-project designation.
+    The email must belong to an accepted member of the caller's org — team
+    onboarding happens up front via /auth/invite, not here."""
     email: EmailStr
     project_role: str  # app.models.auth.ProjectRole value
 
@@ -305,6 +312,9 @@ class ProjectAccess(BaseModel):
     can_manage_client_side: bool
     can_manage_contractor_side: bool
     is_contractor_admin: bool
+    # The viewer's per-project designation (ProjectRole value) or None. Field
+    # capabilities (cast pours, work the gate…) come from this, not the org role.
+    project_role: str | None = None
 
 
 class ProjectDetailResponse(ProjectResponse):

@@ -14,10 +14,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.ai.embeddings import Embedder, get_embedder
 from app.ai.llm import LLMClient, get_llm
 from app.core.dependencies import get_current_user
-from app.core.exceptions import PermissionDeniedError
-from app.core.project_access import require_project
+from app.core.project_access import ensure_project_role, require_project
 from app.database.session import get_db
-from app.models.auth import User, UserRole
+from app.models.auth import ProjectRole, User
 from app.models.master import Project
 from app.schemas.ai_suggestion import AISuggestionApply, AISuggestionResponse
 from app.schemas.quality import NCRDetailResponse
@@ -25,12 +24,6 @@ from app.services.ai_suggestion_service import AISuggestionService
 
 router = APIRouter(prefix="/projects", tags=["ai-suggestions"])
 
-
-def _ensure_quality_engineer(user: User) -> None:
-    if user.role != UserRole.QUALITY_ENGINEER:
-        raise PermissionDeniedError(
-            "Only a quality engineer can generate or apply AI suggestions"
-        )
 
 
 @router.get(
@@ -58,7 +51,7 @@ async def generate_ai_suggestion(
     llm: LLMClient = Depends(get_llm),
     embedder: Embedder = Depends(get_embedder),
 ):
-    _ensure_quality_engineer(current_user)
+    await ensure_project_role(db, current_user, project, ProjectRole.QUALITY_ENGINEER)
     return await AISuggestionService(db, llm, embedder).generate(
         project, ncr_id, current_user
     )
@@ -76,5 +69,5 @@ async def apply_ai_suggestion(
     db: AsyncSession = Depends(get_db),
 ):
     # Applies a stored suggestion — no LLM / embedder needed.
-    _ensure_quality_engineer(current_user)
+    await ensure_project_role(db, current_user, project, ProjectRole.QUALITY_ENGINEER)
     return await AISuggestionService(db).apply(project, ncr_id, data, current_user)

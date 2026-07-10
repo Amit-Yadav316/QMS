@@ -9,10 +9,14 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user
-from app.core.exceptions import PermissionDeniedError
-from app.core.project_access import ensure_can_manage_contractor_side, require_project
+from app.core.project_access import (
+    ensure_can_block_entities,
+    ensure_can_manage_contractor_side,
+    ensure_project_role,
+    require_project,
+)
 from app.database.session import get_db
-from app.models.auth import User, UserRole
+from app.models.auth import ProjectRole, User
 from app.models.master import Project
 from app.schemas.alert import RmcNotify
 from app.schemas.master import (
@@ -27,29 +31,6 @@ from app.services.mixdesign_service import MixDesignService
 from app.services.supplier_service import SupplierService
 
 router = APIRouter(prefix="/projects", tags=["suppliers"])
-
-# A QE, project manager, or contractor (admin/user) may block/unblock an RMC or lab.
-_BLOCKER_ROLES = {
-    UserRole.QUALITY_ENGINEER,
-    UserRole.PROJECT_MANAGER,
-    UserRole.CONTRACTOR_ADMIN,
-    UserRole.CONTRACTOR_USER,
-}
-
-
-def ensure_can_block(user: User) -> None:
-    if user.role not in _BLOCKER_ROLES:
-        raise PermissionDeniedError(
-            "Only a quality engineer, project manager, or contractor can block/unblock"
-        )
-
-
-def ensure_qe_or_pm(user: User) -> None:
-    """Quality alerts + the RMC-issue email are for the QE and project manager."""
-    if user.role not in (UserRole.QUALITY_ENGINEER, UserRole.PROJECT_MANAGER):
-        raise PermissionDeniedError(
-            "Only a quality engineer or project manager can do this"
-        )
 
 
 @router.post(
@@ -151,7 +132,7 @@ async def block_supplier(
     db: AsyncSession = Depends(get_db),
 ):
     """Block a supplier (with a reason) from new dispatches / mix-design requests."""
-    ensure_can_block(current_user)
+    await ensure_can_block_entities(db, current_user, project)
     return await SupplierService(db).set_blocked(
         project, supplier_id, current_user, blocked=True, reason=data.reason
     )
@@ -166,7 +147,7 @@ async def unblock_supplier(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    ensure_can_block(current_user)
+    await ensure_can_block_entities(db, current_user, project)
     return await SupplierService(db).set_blocked(
         project, supplier_id, current_user, blocked=False
     )
@@ -181,5 +162,7 @@ async def notify_supplier(
     db: AsyncSession = Depends(get_db),
 ):
     """QE/PM emails the RMC about a quality issue."""
-    ensure_qe_or_pm(current_user)
+    await ensure_project_role(
+        db, current_user, project, ProjectRole.QUALITY_ENGINEER, ProjectRole.PROJECT_MANAGER
+    )
     await SupplierService(db).notify_issue(project, supplier_id, data, current_user)

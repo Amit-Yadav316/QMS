@@ -12,11 +12,14 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user
-from app.core.project_access import ensure_can_manage_contractor_side, require_project
+from app.core.project_access import (
+    ensure_can_block_entities,
+    ensure_can_manage_contractor_side,
+    require_project,
+)
 from app.database.session import get_db
 from app.models.auth import User
 from app.models.master import Project
-from app.routers.suppliers import ensure_can_block
 from app.schemas.master import BlockRequest, LabCreate, LabResponse
 from app.services.lab_service import LabService
 
@@ -68,7 +71,7 @@ async def block_lab(
     db: AsyncSession = Depends(get_db),
 ):
     """Block a lab (with a reason) from new cube samples / report links."""
-    ensure_can_block(current_user)
+    await ensure_can_block_entities(db, current_user, project)
     return await LabService(db).set_blocked(
         project, lab_id, current_user, blocked=True, reason=data.reason
     )
@@ -81,5 +84,5 @@ async def unblock_lab(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    ensure_can_block(current_user)
+    await ensure_can_block_entities(db, current_user, project)
     return await LabService(db).set_blocked(project, lab_id, current_user, blocked=False)

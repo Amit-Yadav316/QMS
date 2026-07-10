@@ -154,3 +154,53 @@ async def ensure_can_manage_project(db: AsyncSession, user: User, project: Proje
 async def ensure_contractor_admin_for(db: AsyncSession, user: User, project: Project) -> None:
     if not await is_contractor_admin_for(db, user, project):
         raise PermissionDeniedError("Only the contractor admin can do this")
+
+
+# ── Operational capabilities (per-project designation) ──────────────────────
+#
+# Field capabilities (cast pours, work the gate, review mixes/NCRs/docs) come
+# from the caller's *per-project* designation (ProjectMember.project_role), NOT
+# their org-level role — someone is a QE on the project they're assigned to, and
+# has no field rights on a project they aren't assigned to.
+
+_ROLE_LABELS: dict[str, str] = {
+    ProjectRole.QUALITY_ENGINEER.value: "quality engineer",
+    ProjectRole.SUPERVISOR.value: "site supervisor",
+    ProjectRole.PROJECT_MANAGER.value: "project manager",
+    ProjectRole.CONTRACTOR_LEAD.value: "contractor lead",
+    ProjectRole.CLIENT_LEAD.value: "client lead",
+}
+
+
+async def caller_project_role(
+    db: AsyncSession, user: User, project: Project
+) -> str | None:
+    """The caller's per-project designation on this project, or None."""
+    member = await get_membership(db, project.project_id, user.user_id)
+    return member.project_role if member else None
+
+
+async def ensure_project_role(
+    db: AsyncSession, user: User, project: Project, *roles: ProjectRole
+) -> None:
+    """Require the caller to hold one of the given per-project designations."""
+    allowed = {r.value for r in roles}
+    role = await caller_project_role(db, user, project)
+    if role not in allowed:
+        names = " or ".join(_ROLE_LABELS.get(r.value, r.value.lower()) for r in roles)
+        raise PermissionDeniedError(f"Only the project's {names} can do this")
+
+
+async def ensure_can_block_entities(
+    db: AsyncSession, user: User, project: Project
+) -> None:
+    """Block/unblock a supplier or lab: the project's QE/PM, or the contractor
+    admin running the project."""
+    role = await caller_project_role(db, user, project)
+    if role in {ProjectRole.QUALITY_ENGINEER.value, ProjectRole.PROJECT_MANAGER.value}:
+        return
+    if await is_contractor_admin_for(db, user, project):
+        return
+    raise PermissionDeniedError(
+        "Only the project's QE or PM, or the contractor admin, can block entities"
+    )
