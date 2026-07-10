@@ -39,7 +39,7 @@ from app.models.quality import NCR, CubeTest, NCRStatus, ResultStatus
 from app.models.transaction import (
     CubeSample,
     Pour,
-    PourDispatchLink,
+    RMCDispatch,
     TruckDispatch,
     TruckStatus,
 )
@@ -552,11 +552,10 @@ class AnalyticsService:
                     func.count(distinct(TruckDispatch.dispatch_token_id)),
                 )
                 .join(
-                    PourDispatchLink,
-                    PourDispatchLink.dispatch_id == TruckDispatch.dispatch_id,
+                    RMCDispatch,
+                    RMCDispatch.dispatch_id == TruckDispatch.dispatch_id,
                 )
-                .join(Pour, Pour.pour_id == PourDispatchLink.pour_id)
-                .where(Pour.project_id == pid)
+                .where(RMCDispatch.project_id == pid)
                 .group_by(TruckDispatch.status)
             )
         ).all()

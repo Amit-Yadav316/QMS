@@ -8,8 +8,14 @@ import { Users, Truck, Building, FileText, ChevronRight } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Select } from '../../components/ui/Select';
 import { Input } from '../../components/ui/Input';
+import { Badge } from '../../components/ui/Badge';
+import { useConfirm } from '../../components/ui/ConfirmDialog';
 import { KpiStrip } from '../../components/analytics/KpiStrip';
 import { useProject } from '../../components/layout/ProjectLayout';
+import { useAuth } from '../../hooks/useAuth';
+import { getApiErrorMessage } from '../../api/client';
+import { toast } from '../../lib/toast';
+import { useUpdateProjectStatus } from '../../queries/projects';
 import { useProjectMembers } from '../../queries/team';
 import { useProjectContractors } from '../../queries/contractors';
 import { useSuppliers } from '../../queries/suppliers';
@@ -19,18 +25,46 @@ import {
 } from '../../queries/analytics';
 import { useProjectTowers } from '../../queries/floors';
 import { useGrades } from '../../queries/catalog';
-import type { QualityFilters } from '../../types/master';
+import type { ProjectStatus, QualityFilters } from '../../types/master';
 import '../Dashboard.css';
 import './ProjectOverview.css';
 
 const fmtNum = (n: number | null | undefined): string => (n == null ? '—' : n.toLocaleString());
 const fmtPct = (n: number | null | undefined): string => (n == null ? '—' : `${n}%`);
 
+const STATUS_META: Record<ProjectStatus, { variant: 'pass' | 'warn' | 'info'; label: string }> = {
+  ACTIVE: { variant: 'info', label: 'Active' },
+  ON_HOLD: { variant: 'warn', label: 'On hold' },
+  COMPLETED: { variant: 'pass', label: 'Completed' },
+};
+
 export const ProjectOverview: React.FC = () => {
   const { project } = useProject();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const pid = project.project_id;
   const isClient = project.access.side === 'CLIENT';
+  const isOwner = user?.role === 'CLIENT_ADMIN' && isClient;
+
+  const setStatus = useUpdateProjectStatus(pid);
+  const confirm = useConfirm();
+
+  const changeStatus = async (status: ProjectStatus) => {
+    if (status === project.status) return;
+    if (status === 'COMPLETED' && !(await confirm({
+      title: 'Complete this project?',
+      description: 'Its team members will be freed to join other projects. Data and analytics stay available.',
+      confirmLabel: 'Complete project',
+    }))) {
+      return;
+    }
+    try {
+      await setStatus.mutateAsync(status);
+      toast.success(`Project marked ${STATUS_META[status].label.toLowerCase()}.`);
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, 'Unable to update the project status.'));
+    }
+  };
 
   const { data: members = [] } = useProjectMembers(pid);
   const { data: contractors = [] } = useProjectContractors(pid, isClient);
@@ -116,6 +150,27 @@ export const ProjectOverview: React.FC = () => {
 
   return (
     <div className="qms-dashboard">
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', marginBottom: 6 }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <span className="qms-text-sm text-muted">Project status</span>
+          <Badge variant={STATUS_META[project.status].variant}>{STATUS_META[project.status].label}</Badge>
+        </div>
+        {isOwner && (
+          <Select
+            fullWidth={false}
+            aria-label="Project status"
+            value={project.status}
+            disabled={setStatus.isPending}
+            onChange={(e) => changeStatus(e.target.value as ProjectStatus)}
+            options={[
+              { label: 'Active', value: 'ACTIVE' },
+              { label: 'On hold', value: 'ON_HOLD' },
+              { label: 'Completed (frees team)', value: 'COMPLETED' },
+            ]}
+          />
+        )}
+      </div>
+
       <div className="qms-kpi-grid">
         {quickLinks.map((q) => (
           <Card

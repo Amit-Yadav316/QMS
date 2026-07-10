@@ -7,7 +7,6 @@ import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
 import { ErrorBox } from '../../components/ui/ErrorBox';
 import { useProject } from '../../components/layout/ProjectLayout';
-import { useAuth } from '../../hooks/useAuth';
 import { getApiErrorMessage } from '../../api/client';
 import { toast } from '../../lib/toast';
 import { useConfirm } from '../../components/ui/ConfirmDialog';
@@ -52,8 +51,7 @@ export const ProjectDocuments: React.FC = () => {
   const canManage =
     project.access.can_manage_client_side || project.access.can_manage_contractor_side;
 
-  const { user } = useAuth();
-  const canReview = user?.role === 'QUALITY_ENGINEER' || user?.role === 'PROJECT_MANAGER';
+  const canReview = project.access.project_role === 'QUALITY_ENGINEER' || project.access.project_role === 'PROJECT_MANAGER';
 
   const { data: rows = [], isPending, error: loadError } = useDocuments(pid);
   const upload = useUploadDocument(pid);

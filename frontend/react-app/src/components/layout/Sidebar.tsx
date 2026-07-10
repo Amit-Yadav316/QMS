@@ -24,6 +24,7 @@ import {
   Bell,
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
+import { useProjectDetail } from '../../queries/projects';
 import { useQEInboxCount } from '../../queries/qeInbox';
 import { useAlertCount } from '../../queries/alerts';
 import { initials, roleLabel } from '../../lib/initials';
@@ -43,10 +44,14 @@ export const Sidebar: React.FC = () => {
   const isAdmin = user?.role === 'CLIENT_ADMIN' || user?.role === 'CONTRACTOR_ADMIN';
   const isContractorOrg =
     user?.role === 'CONTRACTOR_ADMIN' || user?.role === 'CONTRACTOR_USER';
-  // Operational actions are role-specific.
-  const isQualityEngineer = user?.role === 'QUALITY_ENGINEER';
-  const isProjectManager = user?.role === 'PROJECT_MANAGER';
-  const isSupervisor = user?.role === 'SUPERVISOR';
+
+  // Operational actions come from the caller's per-project designation, not their
+  // org role — a person is a QE only on the project they're assigned to.
+  const { data: projectDetail } = useProjectDetail(Number(rawId), inProject);
+  const designation = projectDetail?.access.project_role ?? null;
+  const isQualityEngineer = designation === 'QUALITY_ENGINEER';
+  const isProjectManager = designation === 'PROJECT_MANAGER';
+  const isSupervisor = designation === 'SUPERVISOR';
 
   // QE in-situ inbox badge (PENDING_QE deliveries), polled.
   const { data: inbox } = useQEInboxCount(Number(rawId), inProject && isQualityEngineer);
@@ -145,8 +150,9 @@ export const Sidebar: React.FC = () => {
           {isContractorOrg && (
             <NavLink to="/app/assigned" className={item}><Inbox size={18} /> Assigned</NavLink>
           )}
+          <NavLink to="/app/team" className={item}><Users size={18} /> Team</NavLink>
           <div style={{ padding: '16px 12px', fontSize: 13, color: 'var(--gray-500)' }}>
-            Open a project to see its dashboard, analytics, team, suppliers and more.
+            Build your team here, then open a project to assign roles.
           </div>
         </nav>
       )}

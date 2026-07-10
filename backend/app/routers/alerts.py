@@ -9,11 +9,10 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user
-from app.core.project_access import require_project
+from app.core.project_access import ensure_project_role, require_project
 from app.database.session import get_db
-from app.models.auth import User
+from app.models.auth import ProjectRole, User
 from app.models.master import Project
-from app.routers.suppliers import ensure_qe_or_pm
 from app.schemas.alert import AlertCount, AlertResponse
 from app.services.alert_service import AlertService
 
@@ -26,7 +25,9 @@ async def list_alerts(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    ensure_qe_or_pm(current_user)
+    await ensure_project_role(
+        db, current_user, project, ProjectRole.QUALITY_ENGINEER, ProjectRole.PROJECT_MANAGER
+    )
     return await AlertService(db).list_open(project)
 
 
@@ -36,7 +37,9 @@ async def alerts_count(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    ensure_qe_or_pm(current_user)
+    await ensure_project_role(
+        db, current_user, project, ProjectRole.QUALITY_ENGINEER, ProjectRole.PROJECT_MANAGER
+    )
     return AlertCount(count=await AlertService(db).count_open(project))
 
 
@@ -47,5 +50,7 @@ async def acknowledge_alert(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    ensure_qe_or_pm(current_user)
+    await ensure_project_role(
+        db, current_user, project, ProjectRole.QUALITY_ENGINEER, ProjectRole.PROJECT_MANAGER
+    )
     return await AlertService(db).acknowledge(project, alert_id, current_user)
