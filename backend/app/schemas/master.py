@@ -63,6 +63,9 @@ class ProjectCreate(BaseModel):
     project_type: ProjectType | None = None
     project_code: str | None = None
     status: ProjectStatus = ProjectStatus.ACTIVE
+    # Who registers RMC suppliers + labs: CONTRACTOR (default) or CLIENT (the
+    # client registers them and the contractor accepts/rejects each).
+    registration_by: Literal["CONTRACTOR", "CLIENT"] = "CONTRACTOR"
     gst_number: str | None = None
     # Location
     address_line1: str | None = None
@@ -101,6 +104,7 @@ class ProjectResponse(BaseModel):
     project_code: str | None
     project_location: str | None
     status: ProjectStatus
+    registration_by: str = "CONTRACTOR"
     city: str | None
     state: str | None
     start_date: date | None
@@ -164,6 +168,10 @@ class SupplierResponse(BaseModel):
     confirmed_at: datetime | None
     is_blocked: bool = False
     block_reason: str | None = None
+    # Client-registered RMC approval (see Project.registration_by).
+    registered_by: str = "CONTRACTOR"
+    approval_status: str = "NOT_REQUIRED"
+    approval_reason: str | None = None
     mix_design_document_id: int | None = None
     mix_design_document_name: str | None = None
     mix_submission_token: str | None = None
@@ -176,6 +184,12 @@ class BlockRequest(BaseModel):
     """Reason a QE/PM/contractor gives when blocking an RMC supplier or lab."""
 
     reason: str
+
+
+class ApprovalReject(BaseModel):
+    """Reason the contractor gives when rejecting a client-registered RMC/lab."""
+
+    reason: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -223,6 +237,10 @@ class LabResponse(BaseModel):
     confirmed_at: datetime | None
     is_blocked: bool = False
     block_reason: str | None = None
+    # Client-registered lab approval (see Project.registration_by).
+    registered_by: str = "CONTRACTOR"
+    approval_status: str = "NOT_REQUIRED"
+    approval_reason: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

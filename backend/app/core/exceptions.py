@@ -214,6 +214,30 @@ class EntityBlockedError(HTTPException):
         super().__init__(status_code=status.HTTP_400_BAD_REQUEST, detail=detail)
 
 
+class EntityNotApprovedError(HTTPException):
+    """A client-registered RMC supplier or testing lab was used before the
+    contractor accepted it. It must be accepted first."""
+
+    def __init__(self, kind: str):
+        super().__init__(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"This {kind} is awaiting the contractor's approval and can't "
+            "be used yet.",
+        )
+
+
+class NoAcceptedContractorError(HTTPException):
+    """The client tried to register an RMC/lab (client-registration mode) with no
+    accepted contractor on the project to approve and work with it."""
+
+    def __init__(self):
+        super().__init__(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Bring a contractor onto the project (and have them accept) "
+            "before registering RMC suppliers or labs as the client.",
+        )
+
+
 class MemberNotInOrgError(HTTPException):
     """A project assignment named someone who isn't a team member yet — only
     existing (accepted) org members can be assigned to a project."""

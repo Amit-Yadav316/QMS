@@ -24,6 +24,7 @@ from app.config import settings
 from app.core.email import send_truck_dispatch_email, send_truck_result_email
 from app.core.exceptions import (
     EntityBlockedError,
+    EntityNotApprovedError,
     GradeNotApprovedError,
     NotFoundError,
     PermissionDeniedError,
@@ -97,6 +98,8 @@ class DispatchService:
             raise NotFoundError("Supplier")
         if supplier.is_blocked:
             raise EntityBlockedError("supplier", supplier.block_reason)
+        if supplier.approval_status not in ("NOT_REQUIRED", "ACCEPTED"):
+            raise EntityNotApprovedError("supplier")
         if not supplier.contact_email:
             raise PermissionDeniedError(
                 "This supplier has no contact email — confirm the supplier "

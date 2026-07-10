@@ -13,7 +13,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.core.email import send_lab_confirmation_email
-from app.core.exceptions import NotFoundError, PermissionDeniedError
+from app.core.exceptions import (
+    NoAcceptedContractorError,
+    NotFoundError,
+    PermissionDeniedError,
+    TruckStateError,
+)
+from app.core.project_access import contractor_org_ids
 from app.core.security import create_invitation_token
 from app.models.auth import User
 from app.models.master import Project, TestingLab
@@ -67,11 +73,27 @@ class LabService:
     async def create(
         self, data: LabCreate, project: Project, user: User
     ) -> LabResponse:
+        # Client-registered labs attach to the project's accepted contractor and
+        # start PENDING their approval; contractor-registered ones need none.
+        if project.registration_by == "CLIENT":
+            contractors = await contractor_org_ids(
+                self.session, project.project_id, accepted_only=True
+            )
+            if not contractors:
+                raise NoAcceptedContractorError()
+            contractor_org_id = sorted(contractors)[0]
+            registered_by, approval_status = "CLIENT", "PENDING"
+        else:
+            contractor_org_id = user.org_id
+            registered_by, approval_status = "CONTRACTOR", "NOT_REQUIRED"
+
         token = create_invitation_token()
         sent_at = datetime.now(UTC) if data.contact_email else None
         lab = TestingLab(
-            contractor_org_id=user.org_id,
+            contractor_org_id=contractor_org_id,
             project_id=project.project_id,
+            registered_by=registered_by,
+            approval_status=approval_status,
             status="PENDING",
             confirmation_token=token,
             confirmation_sent_at=sent_at,
@@ -139,6 +161,28 @@ class LabService:
         lab.block_reason = reason if blocked else None
         lab.blocked_by = user.user_id if blocked else None
         lab.blocked_at = datetime.now(UTC) if blocked else None
+        await self.session.flush()
+        return await self._to_response(lab)
+
+    async def set_approval(
+        self,
+        project: Project,
+        lab_id: int,
+        user: User,
+        *,
+        accepted: bool,
+        reason: str | None = None,
+    ) -> LabResponse:
+        """The contractor accepts / rejects a client-registered lab."""
+        lab = await self.repo.get_by(TestingLab.lab_id == lab_id)
+        if not lab or lab.project_id != project.project_id:
+            raise NotFoundError("Lab")
+        if lab.registered_by != "CLIENT":
+            raise TruckStateError(
+                "This lab was registered by the contractor and needs no approval"
+            )
+        lab.approval_status = "ACCEPTED" if accepted else "REJECTED"
+        lab.approval_reason = None if accepted else reason
         await self.session.flush()
         return await self._to_response(lab)
 

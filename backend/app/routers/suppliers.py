@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.dependencies import get_current_user
 from app.core.project_access import (
     ensure_can_block_entities,
+    ensure_can_manage_client_side,
     ensure_can_manage_contractor_side,
     ensure_project_role,
     require_project,
@@ -20,6 +21,7 @@ from app.models.auth import ProjectRole, User
 from app.models.master import Project
 from app.schemas.alert import RmcNotify
 from app.schemas.master import (
+    ApprovalReject,
     BlockRequest,
     MixDesignResponse,
     RequiredGradeInfo,
@@ -42,8 +44,13 @@ async def create_supplier(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Register an RMC supplier for this project (contractor side)."""
-    await ensure_can_manage_contractor_side(db, current_user, project)
+    """Register an RMC supplier. Who may register depends on the project's
+    ``registration_by`` setting: the client (client-side rights) when CLIENT, else
+    the contractor (contractor-side rights)."""
+    if project.registration_by == "CLIENT":
+        await ensure_can_manage_client_side(db, current_user, project)
+    else:
+        await ensure_can_manage_contractor_side(db, current_user, project)
     return await SupplierService(db).create(data, project, current_user)
 
 
@@ -150,6 +157,39 @@ async def unblock_supplier(
     await ensure_can_block_entities(db, current_user, project)
     return await SupplierService(db).set_blocked(
         project, supplier_id, current_user, blocked=False
+    )
+
+
+@router.post(
+    "/{project_id}/suppliers/{supplier_id}/approve", response_model=SupplierResponse
+)
+async def approve_supplier(
+    supplier_id: int,
+    project: Project = Depends(require_project),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Contractor accepts a client-registered RMC (→ usable for dispatch/mix)."""
+    await ensure_can_manage_contractor_side(db, current_user, project)
+    return await SupplierService(db).set_approval(
+        project, supplier_id, current_user, accepted=True
+    )
+
+
+@router.post(
+    "/{project_id}/suppliers/{supplier_id}/reject", response_model=SupplierResponse
+)
+async def reject_supplier(
+    supplier_id: int,
+    data: ApprovalReject,
+    project: Project = Depends(require_project),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Contractor rejects a client-registered RMC (→ not usable), with a reason."""
+    await ensure_can_manage_contractor_side(db, current_user, project)
+    return await SupplierService(db).set_approval(
+        project, supplier_id, current_user, accepted=False, reason=data.reason
     )
 
 
