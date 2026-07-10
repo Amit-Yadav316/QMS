@@ -11,7 +11,6 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { ErrorBox } from '../../components/ui/ErrorBox';
 import { useProject } from '../../components/layout/ProjectLayout';
-import { useAuth } from '../../hooks/useAuth';
 import { getApiErrorMessage } from '../../api/client';
 import { toast } from '../../lib/toast';
 import { useAcknowledgeAlert, useAlerts, useNotifyRmc } from '../../queries/alerts';
@@ -86,13 +85,12 @@ const AlertCard: React.FC<{ pid: number; alert: AlertResponse }> = ({ pid, alert
 
 export const Alerts: React.FC = () => {
   const { project } = useProject();
-  const { user } = useAuth();
   const pid = project.project_id;
-  const canView = user?.role === 'QUALITY_ENGINEER' || user?.role === 'PROJECT_MANAGER';
+  const canView = project.access.project_role === 'QUALITY_ENGINEER' || project.access.project_role === 'PROJECT_MANAGER';
 
   const { data: alerts = [], isPending, error } = useAlerts(pid, canView);
 
-  if (user && !canView) return <Navigate to={`/app/projects/${pid}`} replace />;
+  if (!canView) return <Navigate to={`/app/projects/${pid}`} replace />;
 
   return (
     <div>

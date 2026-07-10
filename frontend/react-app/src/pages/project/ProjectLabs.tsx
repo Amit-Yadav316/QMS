@@ -10,7 +10,6 @@ import { Badge } from '../../components/ui/Badge';
 import { ErrorBox } from '../../components/ui/ErrorBox';
 import { Plus, Mail } from 'lucide-react';
 import { useProject } from '../../components/layout/ProjectLayout';
-import { useAuth } from '../../hooks/useAuth';
 import { BlockControl } from '../../components/BlockControl';
 import { getApiErrorMessage } from '../../api/client';
 import { toast } from '../../lib/toast';
@@ -40,10 +39,9 @@ const EMPTY: FormValues = { lab_name: '', lab_type: 'THIRD_PARTY', accreditation
 
 export const ProjectLabs: React.FC = () => {
   const { project } = useProject();
-  const { user } = useAuth();
   const pid = project.project_id;
   const canManage = project.access.can_manage_contractor_side;
-  const canBlock = canBlockEntities(user?.role);
+  const canBlock = canBlockEntities(project.access);
 
   const { data: rows = [], isPending, error: loadError } = useLabs(pid);
   const createLab = useCreateLab(pid);

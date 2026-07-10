@@ -11,7 +11,6 @@ import { Badge } from '../../components/ui/Badge';
 import { ErrorBox } from '../../components/ui/ErrorBox';
 import { Plus, Mail, FileDown } from 'lucide-react';
 import { useProject } from '../../components/layout/ProjectLayout';
-import { useAuth } from '../../hooks/useAuth';
 import { BlockControl } from '../../components/BlockControl';
 import { getApiErrorMessage } from '../../api/client';
 import { toast } from '../../lib/toast';
@@ -48,11 +47,10 @@ const EMPTY: FormValues = { supplier_name: '', plant_name: '', gst_number: '', p
 
 export const ProjectSuppliers: React.FC = () => {
   const { project } = useProject();
-  const { user } = useAuth();
   const navigate = useNavigate();
   const pid = project.project_id;
   const canManage = project.access.can_manage_contractor_side;
-  const canBlock = canBlockEntities(user?.role);
+  const canBlock = canBlockEntities(project.access);
 
   const { data: rows = [], isPending, error: loadError } = useSuppliers(pid);
   const { data: documents = [] } = useDocuments(pid);

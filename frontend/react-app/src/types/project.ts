@@ -101,6 +101,9 @@ export interface ProjectAccess {
   can_manage_client_side: boolean;
   can_manage_contractor_side: boolean;
   is_contractor_admin: boolean;
+  // The viewer's per-project designation (ProjectRole value) or null. Field
+  // capabilities (cast pours, work the gate…) are gated on this, not the org role.
+  project_role: string | null;
 }
 
 export interface ProjectDetail extends ProjectResponse {

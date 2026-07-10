@@ -16,6 +16,7 @@ import { ProjectsList } from './pages/ProjectsList';
 import { ProjectMasterForm } from './pages/ProjectMasterForm';
 import { AssignedProjects } from './pages/AssignedProjects';
 import { Profile } from './pages/Profile';
+import { Team } from './pages/Team';
 
 // Project workspace (everything below is scoped to one project)
 import { ProjectLayout } from './components/layout/ProjectLayout';
@@ -63,6 +64,7 @@ function App() {
             <Route path="projects" element={<ProjectsList />} />
             <Route path="projects/new" element={<ProjectMasterForm />} />
             <Route path="assigned" element={<AssignedProjects />} />
+            <Route path="team" element={<Team />} />
             <Route path="profile" element={<Profile />} />
 
             {/* Project workspace — all pages scoped to :projectId */}
