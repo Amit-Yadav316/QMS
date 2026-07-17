@@ -112,7 +112,9 @@ export const Analytics: React.FC = () => {
   const runRef = useRef<HTMLDivElement>(null);
   const distRef = useRef<HTMLDivElement>(null);
   const cusumRef = useRef<HTMLDivElement>(null);
-  const [sel, setSel] = useState({ run: true, dist: true, cusum: true });
+  const oneSampleRef = useRef<HTMLDivElement>(null);
+  const twoSampleRef = useRef<HTMLDivElement>(null);
+  const [sel, setSel] = useState({ run: true, dist: true, cusum: true, oneSample: false, twoSample: false });
   const [exporting, setExporting] = useState(false);
 
   const handleExport = async () => {
@@ -120,6 +122,8 @@ export const Analytics: React.FC = () => {
     if (sel.run && runRef.current) sections.push({ title: 'Quality control run chart', el: runRef.current });
     if (sel.dist && distRef.current) sections.push({ title: 'Normal distribution', el: distRef.current });
     if (sel.cusum && cusumRef.current) sections.push({ title: 'CUSUM control chart', el: cusumRef.current });
+    if (sel.oneSample && oneSampleRef.current) sections.push({ title: 'One-sample t-test', el: oneSampleRef.current });
+    if (sel.twoSample && twoSampleRef.current) sections.push({ title: 'Two-sample t-test', el: twoSampleRef.current });
     if (sections.length === 0) return;
     setExporting(true);
     try {
@@ -141,6 +145,8 @@ export const Analytics: React.FC = () => {
         <label><input type="checkbox" checked={sel.run} onChange={(e) => setSel((s) => ({ ...s, run: e.target.checked }))} /> Run chart</label>
         <label><input type="checkbox" checked={sel.dist} onChange={(e) => setSel((s) => ({ ...s, dist: e.target.checked }))} /> Distribution</label>
         <label><input type="checkbox" checked={sel.cusum} onChange={(e) => setSel((s) => ({ ...s, cusum: e.target.checked }))} /> CUSUM</label>
+        <label><input type="checkbox" checked={sel.oneSample} onChange={(e) => setSel((s) => ({ ...s, oneSample: e.target.checked }))} /> One-sample t-test</label>
+        <label><input type="checkbox" checked={sel.twoSample} onChange={(e) => setSel((s) => ({ ...s, twoSample: e.target.checked }))} /> Two-sample t-test</label>
         <Button size="sm" variant="outline" icon={<Download size={14} />} onClick={handleExport} disabled={exporting}>
           {exporting ? 'Generating…' : 'Download PDF'}
         </Button>
@@ -244,7 +250,7 @@ export const Analytics: React.FC = () => {
       </div>
 
       {/* 4 · Statistical tests (Student's t) */}
-      <TTestSection pid={pid} />
+      <TTestSection pid={pid} oneSampleRef={oneSampleRef} twoSampleRef={twoSampleRef} />
     </div>
   );
 };

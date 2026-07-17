@@ -274,7 +274,11 @@ const TwoSamplePanel: React.FC<{ pid: number; confidence: number }> = ({ pid, co
 
 // ── Section ──────────────────────────────────────────────────────────────────
 
-export const TTestSection: React.FC<{ pid: number }> = ({ pid }) => {
+export const TTestSection: React.FC<{
+  pid: number;
+  oneSampleRef?: React.Ref<HTMLDivElement>;
+  twoSampleRef?: React.Ref<HTMLDivElement>;
+}> = ({ pid, oneSampleRef, twoSampleRef }) => {
   const [confPct, setConfPct] = useState('95');
   const confidence = Number(confPct) / 100;
 
@@ -284,8 +288,8 @@ export const TTestSection: React.FC<{ pid: number }> = ({ pid }) => {
         <h2 style={{ fontSize: 17, fontWeight: 700, color: 'var(--gray-900)', margin: 0 }}>Statistical tests</h2>
         <Select label="Confidence level" fullWidth={false} value={confPct} onChange={(e) => setConfPct(e.target.value)} options={CONF_OPTS} />
       </div>
-      <OneSamplePanel pid={pid} confidence={confidence} />
-      <TwoSamplePanel pid={pid} confidence={confidence} />
+      <div ref={oneSampleRef}><OneSamplePanel pid={pid} confidence={confidence} /></div>
+      <div ref={twoSampleRef}><TwoSamplePanel pid={pid} confidence={confidence} /></div>
     </>
   );
 };
