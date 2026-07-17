@@ -198,6 +198,7 @@ class OneSampleTTest(BaseModel):
     mu0: float
     mu0_basis: str  # 'fck' | 'target' | 'custom'
     grade_name: str | None = None
+    values: list[float] = []  # the individual observed strengths (for plotting)
     t_statistic: float
     df: float
     p_value: float
@@ -233,6 +234,7 @@ class GroupSummary(BaseModel):
     sample_count: int
     mean: float | None = None
     std_dev: float | None = None
+    values: list[float] = []  # the group's individual strengths (for plotting)
 
 
 class TwoSampleTTest(BaseModel):

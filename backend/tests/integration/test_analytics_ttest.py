@@ -48,6 +48,7 @@ class TestOneSampleTTest:
         assert body["mu0_basis"] == "fck"
         assert body["grade_name"] == "M30"
         assert body["mean"] == 35.0
+        assert sorted(body["values"]) == [33.0, 34.0, 35.0, 36.0, 37.0]  # for plotting
         assert body["significant"] is True
         assert body["confidence"] == 0.95     # default
         assert "significantly above" in body["verdict"]
@@ -126,7 +127,9 @@ class TestTwoSampleTTest:
         body = resp.json()
         assert body["group_a"]["label"] == "July"
         assert body["group_a"]["sample_count"] == 3
+        assert sorted(body["group_a"]["values"]) == [40.0, 42.0, 44.0]
         assert body["group_b"]["sample_count"] == 3
+        assert sorted(body["group_b"]["values"]) == [31.0, 32.0, 33.0]
         assert body["mean_diff"] == 10.0     # 42 − 32
         assert body["significant"] is True
         assert "significantly higher than" in body["verdict"]

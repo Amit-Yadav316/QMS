@@ -629,6 +629,7 @@ class AnalyticsService:
             mu0=res.mu0,
             mu0_basis=basis,
             grade_name=grade.grade_name if grade else None,
+            values=[round(v, 2) for v in sample],
             t_statistic=res.t_statistic,
             df=res.df,
             p_value=res.p_value,
@@ -660,10 +661,12 @@ class AnalyticsService:
         )
         return TwoSampleTTest(
             group_a=GroupSummary(
-                label=label_a, sample_count=res.n1, mean=res.mean1, std_dev=res.std_dev1
+                label=label_a, sample_count=res.n1, mean=res.mean1, std_dev=res.std_dev1,
+                values=[round(v, 2) for v in a],
             ),
             group_b=GroupSummary(
-                label=label_b, sample_count=res.n2, mean=res.mean2, std_dev=res.std_dev2
+                label=label_b, sample_count=res.n2, mean=res.mean2, std_dev=res.std_dev2,
+                values=[round(v, 2) for v in b],
             ),
             mean_diff=res.mean_diff,
             t_statistic=res.t_statistic,
