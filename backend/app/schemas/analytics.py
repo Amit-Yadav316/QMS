@@ -187,6 +187,35 @@ class GraphicalSummary(BaseModel):
     prob_points: list[ProbPoint] = []
 
 
+class OutlierPointSchema(BaseModel):
+    """One observation in the outlier scan (chronological order)."""
+
+    index: int      # 1-based position in the ordered dataset
+    value: float
+    is_outlier: bool
+
+
+class OutlierAnalysis(BaseModel):
+    """Modified Thompson τ outlier scan of the filtered strength dataset.
+
+    Flags statistically inconsistent results and reports the mean/StDev before
+    and after their removal — a sudden StDev drop after removing points is a red
+    flag for copied or fabricated readings.
+    """
+
+    sample_count: int = 0
+    grade_name: str | None = None
+    mean: float | None = None
+    std_dev: float | None = None
+    outlier_count: int = 0
+    clean_mean: float | None = None      # mean after removing outliers
+    clean_std_dev: float | None = None   # StDev after removing outliers
+    tau: float | None = None             # modified Thompson τ (first iteration)
+    threshold: float | None = None       # τ·S — rejection distance from the mean
+    points: list[OutlierPointSchema] = []
+    outliers: list[float] = []           # rejected values, ascending
+
+
 class TargetMeanRow(BaseModel):
     grade_name: str
     fck: float

@@ -74,6 +74,31 @@ class TestStatisticalCharts:
         assert len(body["prob_points"]) == 2
         assert sum(bar["count"] for bar in body["histogram"]) == 2
 
+    async def test_outliers_flags_a_fabricated_spike(self, client, db_session):
+        # Four identical results + one far-off value → the odd one is flagged.
+        _, qe_token, pid, pour_id = await _qe_pour(client, db_session)
+        for obs in (30.0, 30.0, 30.0, 30.0, 60.0):
+            sample_id = (await _cast_sample(client, qe_token, pid, pour_id)).json()["sample_id"]
+            await _record_test(
+                client, db_session, qe_token, pid, sample_id, observed_strength_mpa=obs
+            )
+        pour = (
+            await client.get(f"{API}/projects/{pid}/pours/{pour_id}", headers=bearer(qe_token))
+        ).json()
+        resp = await client.get(
+            f"{API}/projects/{pid}/analytics/outliers",
+            params={"grade_id": pour["grade_id"]},
+            headers=bearer(qe_token),
+        )
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["sample_count"] == 5
+        assert body["outlier_count"] == 1
+        assert body["outliers"] == [60.0]
+        assert body["clean_std_dev"] < body["std_dev"]
+        assert len(body["points"]) == 5
+        assert [p for p in body["points"] if p["is_outlier"]][0]["value"] == 60.0
+
     async def test_graphical_summary_empty_when_no_results(self, client, db_session):
         # No cube results yet → 200 with an empty summary (stats are None).
         _, qe_token, pid, _pour_id = await _qe_pour(client, db_session)

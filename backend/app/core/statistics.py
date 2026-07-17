@@ -27,8 +27,11 @@ from statistics import NormalDist, mean, median, quantiles, stdev
 __all__ = [
     "GraphicalSummaryResult",
     "OneSampleResult",
+    "OutlierPoint",
+    "ThompsonOutliersResult",
     "TwoSampleResult",
     "graphical_summary",
+    "modified_thompson_outliers",
     "one_sample_t",
     "student_t_cdf",
     "student_t_ppf",
@@ -482,4 +485,88 @@ def graphical_summary(
         fit_curve=fit_curve,
         kde_curve=kde_curve,
         prob_points=prob_points,
+    )
+
+
+# ── Outlier detection (modified Thompson τ) ──────────────────────────────────
+#
+# Cimbala (Penn State), "Outliers", modified Thompson τ technique for a single
+# variable: reject the most-suspect point when its deviation exceeds τ·S, where
+#   τ = t_{α/2}·(n−1) / (√n · √(n−2 + t_{α/2}²)),  α = 0.05, df = n−2,
+# then recompute mean/S on the survivors and repeat one point at a time until no
+# further point is rejected. t_{α/2} is the two-tailed 5% critical value =
+# student_t_ppf(0.975, n−2).
+
+
+@dataclass
+class OutlierPoint:
+    value: float
+    is_outlier: bool
+
+
+@dataclass
+class ThompsonOutliersResult:
+    n: int
+    mean: float               # of the full sample
+    std_dev: float            # of the full sample (ddof = 1)
+    outlier_count: int
+    clean_mean: float         # after removing the outliers
+    clean_std_dev: float
+    tau: float                # τ for the first (full-sample) iteration
+    threshold: float          # τ·S — the first-iteration rejection distance
+    points: list[OutlierPoint]  # in input order (chronological)
+    outliers: list[float]       # rejected values, ascending
+
+
+def modified_thompson_outliers(sample: list[float]) -> ThompsonOutliersResult:
+    """Flag statistical outliers in a single-variable sample (Thompson τ).
+
+    Points are returned in input order with an ``is_outlier`` flag. With fewer
+    than 3 points the test is undefined, so none are flagged.
+    """
+    values = [float(x) for x in sample]
+    n0 = len(values)
+    full_mean = round(mean(values), 3) if n0 >= 1 else 0.0
+    full_std = round(stdev(values), 3) if n0 >= 2 else 0.0
+
+    outlier_idx: set[int] = set()
+    tau0 = 0.0
+    threshold0 = 0.0
+    remaining = list(enumerate(values))  # (original_index, value)
+    first = True
+    while len(remaining) >= 3:
+        rvals = [v for _, v in remaining]
+        m = mean(rvals)
+        s = stdev(rvals)
+        if s == 0.0:
+            break
+        n = len(rvals)
+        t_a2 = student_t_ppf(0.975, n - 2)  # two-tailed α = 0.05, df = n−2
+        tau = t_a2 * (n - 1) / (math.sqrt(n) * math.sqrt(n - 2 + t_a2 * t_a2))
+        threshold = tau * s
+        # The most-suspect point: the largest absolute deviation from the mean.
+        pos, (oidx, oval) = max(enumerate(remaining), key=lambda kv: abs(kv[1][1] - m))
+        if first:
+            tau0, threshold0, first = round(tau, 4), round(threshold, 3), False
+        if abs(oval - m) > threshold:
+            outlier_idx.add(oidx)
+            remaining.pop(pos)
+        else:
+            break
+
+    clean = [v for i, v in enumerate(values) if i not in outlier_idx]
+    clean_mean = round(mean(clean), 3) if len(clean) >= 1 else 0.0
+    clean_std = round(stdev(clean), 3) if len(clean) >= 2 else 0.0
+
+    return ThompsonOutliersResult(
+        n=n0,
+        mean=full_mean,
+        std_dev=full_std,
+        outlier_count=len(outlier_idx),
+        clean_mean=clean_mean,
+        clean_std_dev=clean_std,
+        tau=tau0,
+        threshold=threshold0,
+        points=[OutlierPoint(round(v, 2), i in outlier_idx) for i, v in enumerate(values)],
+        outliers=sorted(round(values[i], 2) for i in outlier_idx),
     )

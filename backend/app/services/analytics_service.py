@@ -59,6 +59,8 @@ from app.schemas.analytics import (
     GroupSummary,
     HistogramBar,
     OneSampleTTest,
+    OutlierAnalysis,
+    OutlierPointSchema,
     OverviewKpis,
     ProbPoint,
     QualityAnalytics,
@@ -532,6 +534,55 @@ class AnalyticsService:
             out.kde_curve = [CurvePoint(x=x, y=y) for x, y in gs.kde_curve]
             out.prob_points = [
                 ProbPoint(value=v, theoretical=t) for v, t in gs.prob_points
+            ]
+        return out
+
+    async def outliers(
+        self,
+        project: Project,
+        *,
+        date_from: date | None = None,
+        date_to: date | None = None,
+        grade_id: int | None = None,
+        tower_id: int | None = None,
+        contractor_id: int | None = None,
+    ) -> OutlierAnalysis:
+        """Modified Thompson τ outlier scan of the filtered strength dataset."""
+        conds = [
+            Pour.project_id == project.project_id,
+            self._final_test_cond(),
+            *self._dim_conds(
+                CubeTest.test_date, date_from=date_from, date_to=date_to,
+                grade_id=grade_id, tower_id=tower_id, contractor_id=contractor_id,
+            ),
+        ]
+        observed = [
+            float(x)
+            for x in (
+                await self.session.execute(
+                    self._ct_join(CubeTest.observed_strength_mpa)
+                    .where(*conds)
+                    .order_by(CubeTest.test_date, CubeTest.test_id)
+                )
+            ).scalars().all()
+        ]
+        out = OutlierAnalysis(sample_count=len(observed))
+        grade = await self.session.get(Grade, grade_id) if grade_id else None
+        if grade:
+            out.grade_name = grade.grade_name
+        if len(observed) >= 2:
+            res = statistics.modified_thompson_outliers(observed)
+            out.mean = res.mean
+            out.std_dev = res.std_dev
+            out.outlier_count = res.outlier_count
+            out.clean_mean = res.clean_mean
+            out.clean_std_dev = res.clean_std_dev
+            out.tau = res.tau
+            out.threshold = res.threshold
+            out.outliers = res.outliers
+            out.points = [
+                OutlierPointSchema(index=i + 1, value=p.value, is_outlier=p.is_outlier)
+                for i, p in enumerate(res.points)
             ]
         return out
 
