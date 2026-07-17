@@ -130,12 +130,20 @@
 .qms-gs-dl {
   display: grid;
   grid-template-columns: 1fr auto;
-  gap: 3px 12px;
+  gap: 0 12px;
   margin: 0;
   font-size: 13px;
 }
+.qms-gs-dl dt,
+.qms-gs-dl dd {
+  padding: 5px 0;
+  border-bottom: 1px solid var(--gray-100);
+}
 .qms-gs-dl dt { color: var(--gray-600); }
-.qms-gs-dl dd { margin: 0; font-weight: 600; color: var(--gray-900); font-variant-numeric: tabular-nums; }
+.qms-gs-dl dd { margin: 0; font-weight: 600; color: var(--gray-900); font-variant-numeric: tabular-nums; text-align: right; }
+/* Last row in each list drops its divider. */
+.qms-gs-dl dt:nth-last-of-type(1),
+.qms-gs-dl dd:nth-last-of-type(1) { border-bottom: none; }
 
 .qms-gs-verdict {
   display: inline-block;

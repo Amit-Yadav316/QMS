@@ -123,12 +123,12 @@ export const GraphicalSummaryPanel = forwardRef<HTMLDivElement, Props>(function 
                       formatter={(v, name) =>
                         name === 'count' ? [v, 'count'] : [Number(v).toFixed(2), name === 'fit' ? 'normal' : 'KDE']}
                       labelFormatter={(x) => `${Number(x).toFixed(1)} MPa`} />
-                    <Bar dataKey="count" name="count" fill="var(--blue)" fillOpacity={0.28}
-                      stroke="var(--blue)" strokeOpacity={0.5} barSize={26} maxBarSize={40} isAnimationActive={false} />
+                    <Bar dataKey="count" name="count" fill="var(--blue)" fillOpacity={0.22}
+                      stroke="var(--blue)" strokeOpacity={0.35} strokeWidth={1} barSize={26} maxBarSize={40} isAnimationActive={false} />
                     <Line dataKey="fit" name="fit" type="monotone" dot={false} connectNulls
-                      stroke="var(--blue)" strokeWidth={2} isAnimationActive={false} />
+                      stroke="var(--blue)" strokeWidth={1.5} isAnimationActive={false} />
                     <Line dataKey="kde" name="kde" type="monotone" dot={false} connectNulls
-                      stroke="var(--amber, #d97706)" strokeWidth={2} strokeDasharray="5 3" isAnimationActive={false} />
+                      stroke="var(--amber, #d97706)" strokeWidth={1.5} strokeDasharray="5 3" isAnimationActive={false} />
                     {data!.mean != null && (
                       <ReferenceLine x={data!.mean} stroke="var(--green)" strokeDasharray="4 4"
                         label={{ value: 'X̄', position: 'top', fontSize: 11, fill: 'var(--green)' }} />
