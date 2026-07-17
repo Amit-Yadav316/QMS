@@ -6,6 +6,7 @@ import { api } from './client';
 import type {
   CusumChart,
   DistributionCurve,
+  GraphicalSummary,
   OneSampleParams,
   OneSampleTTest,
   OverviewKpis,
@@ -54,6 +55,11 @@ export const analyticsApi = {
   distribution(projectId: number, filters: QualityFilters = {}): Promise<DistributionCurve> {
     return api
       .get<DistributionCurve>(`/projects/${projectId}/analytics/distribution`, { params: filters })
+      .then((r) => r.data);
+  },
+  graphicalSummary(projectId: number, filters: QualityFilters = {}): Promise<GraphicalSummary> {
+    return api
+      .get<GraphicalSummary>(`/projects/${projectId}/analytics/graphical-summary`, { params: filters })
       .then((r) => r.data);
   },
   cusum(projectId: number, filters: QualityFilters = {}): Promise<CusumChart> {

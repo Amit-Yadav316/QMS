@@ -30,6 +30,12 @@ export const useRunChart = (pid: number, filters: QualityFilters = {}) =>
 export const useDistribution = (pid: number, filters: QualityFilters = {}) =>
   useQuery({ queryKey: ['analytics-dist', pid, filters], queryFn: () => analyticsApi.distribution(pid, filters) });
 
+export const useGraphicalSummary = (pid: number, filters: QualityFilters = {}) =>
+  useQuery({
+    queryKey: ['analytics-graphical-summary', pid, filters],
+    queryFn: () => analyticsApi.graphicalSummary(pid, filters),
+  });
+
 export const useCusum = (pid: number, filters: QualityFilters = {}) =>
   useQuery({ queryKey: ['analytics-cusum', pid, filters], queryFn: () => analyticsApi.cusum(pid, filters) });
 
