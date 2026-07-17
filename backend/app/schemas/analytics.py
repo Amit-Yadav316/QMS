@@ -138,6 +138,55 @@ class DistributionCurve(BaseModel):
     histogram: list[StrengthBucket] = []
 
 
+class HistogramBar(BaseModel):
+    """One equal-width bin of the graphical-summary histogram."""
+
+    bin_low: float
+    bin_high: float
+    count: int
+
+
+class ProbPoint(BaseModel):
+    """A point on the normal probability (Q–Q) plot."""
+
+    value: float        # ordered observed strength
+    theoretical: float  # theoretical normal quantile (fitted μ, σ)
+
+
+class GraphicalSummary(BaseModel):
+    """Minitab-style graphical summary of the filtered strength dataset.
+
+    Descriptive moments, quartiles, the Anderson–Darling normality test, a
+    t-based CI for the mean, and the curve data the UI overlays (histogram,
+    fitted normal PDF, Gaussian KDE, normal probability plot).
+    """
+
+    sample_count: int = 0
+    grade_name: str | None = None
+    fck: float | None = None
+    mean: float | None = None
+    std_dev: float | None = None
+    variance: float | None = None
+    skewness: float | None = None
+    kurtosis: float | None = None
+    minimum: float | None = None
+    q1: float | None = None
+    median: float | None = None
+    q3: float | None = None
+    maximum: float | None = None
+    ci_confidence: float = 0.95
+    ci_mean_low: float | None = None
+    ci_mean_high: float | None = None
+    ad_statistic: float | None = None
+    ad_p_value: float | None = None
+    is_normal: bool | None = None
+    bin_width: float | None = None
+    histogram: list[HistogramBar] = []
+    fit_curve: list[CurvePoint] = []   # fitted normal PDF (density)
+    kde_curve: list[CurvePoint] = []   # Gaussian kernel density estimate
+    prob_points: list[ProbPoint] = []
+
+
 class TargetMeanRow(BaseModel):
     grade_name: str
     fck: float

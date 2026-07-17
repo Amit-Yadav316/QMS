@@ -18,6 +18,7 @@ from app.schemas.analytics import (
     Alternative,
     CusumChart,
     DistributionCurve,
+    GraphicalSummary,
     OneSampleTTest,
     OverviewKpis,
     QualityAnalytics,
@@ -129,6 +130,23 @@ async def distribution(
     return await AnalyticsService(db).distribution(
         project, date_from=date_from, date_to=date_to, grade_id=grade_id,
         tower_id=tower_id, contractor_id=contractor_id,
+    )
+
+
+@router.get("/{project_id}/analytics/graphical-summary", response_model=GraphicalSummary)
+async def graphical_summary(
+    date_from: date | None = None,
+    date_to: date | None = None,
+    grade_id: int | None = None,
+    tower_id: int | None = None,
+    contractor_id: int | None = None,
+    confidence: float = 0.95,
+    project: Project = Depends(require_project),
+    db: AsyncSession = Depends(get_db),
+):
+    return await AnalyticsService(db).graphical_summary(
+        project, date_from=date_from, date_to=date_to, grade_id=grade_id,
+        tower_id=tower_id, contractor_id=contractor_id, confidence=confidence,
     )
 
 

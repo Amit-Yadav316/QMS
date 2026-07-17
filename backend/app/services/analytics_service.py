@@ -54,10 +54,13 @@ from app.schemas.analytics import (
     CusumPoint,
     DistributionCurve,
     GradeTrendPoint,
+    GraphicalSummary,
     GroupFilter,
     GroupSummary,
+    HistogramBar,
     OneSampleTTest,
     OverviewKpis,
+    ProbPoint,
     QualityAnalytics,
     ResultBreakdown,
     RunChart,
@@ -469,6 +472,68 @@ class AnalyticsService:
                 ]
         curve.histogram = await self._strength_distribution(conds)
         return curve
+
+    async def graphical_summary(
+        self,
+        project: Project,
+        *,
+        date_from: date | None = None,
+        date_to: date | None = None,
+        grade_id: int | None = None,
+        tower_id: int | None = None,
+        contractor_id: int | None = None,
+        confidence: float = 0.95,
+    ) -> GraphicalSummary:
+        """Minitab-style graphical summary of the filtered strength dataset."""
+        conds = [
+            Pour.project_id == project.project_id,
+            self._final_test_cond(),
+            *self._dim_conds(
+                CubeTest.test_date, date_from=date_from, date_to=date_to,
+                grade_id=grade_id, tower_id=tower_id, contractor_id=contractor_id,
+            ),
+        ]
+        observed = [
+            float(x)
+            for x in (
+                await self.session.execute(
+                    self._ct_join(CubeTest.observed_strength_mpa).where(*conds)
+                )
+            ).scalars().all()
+        ]
+        out = GraphicalSummary(sample_count=len(observed), ci_confidence=confidence)
+        grade = await self.session.get(Grade, grade_id) if grade_id else None
+        if grade:
+            out.grade_name = grade.grade_name
+            out.fck = float(grade.min_strength_mpa)
+        if len(observed) >= 2:
+            gs = statistics.graphical_summary(observed, confidence=confidence)
+            out.mean = gs.mean
+            out.std_dev = gs.std_dev
+            out.variance = gs.variance
+            out.skewness = gs.skewness
+            out.kurtosis = gs.kurtosis
+            out.minimum = gs.minimum
+            out.q1 = gs.q1
+            out.median = gs.median
+            out.q3 = gs.q3
+            out.maximum = gs.maximum
+            out.ci_mean_low = gs.ci_mean_low
+            out.ci_mean_high = gs.ci_mean_high
+            out.ad_statistic = gs.ad_statistic
+            out.ad_p_value = gs.ad_p_value
+            out.is_normal = gs.is_normal
+            out.bin_width = gs.bin_width
+            out.histogram = [
+                HistogramBar(bin_low=lo, bin_high=hi, count=c)
+                for lo, hi, c in gs.histogram
+            ]
+            out.fit_curve = [CurvePoint(x=x, y=y) for x, y in gs.fit_curve]
+            out.kde_curve = [CurvePoint(x=x, y=y) for x, y in gs.kde_curve]
+            out.prob_points = [
+                ProbPoint(value=v, theoretical=t) for v, t in gs.prob_points
+            ]
+        return out
 
     async def target_mean_bar(
         self,
