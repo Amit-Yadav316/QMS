@@ -6,6 +6,10 @@
 // runs on the backend (app/core/statistics.py) — this is presentation only.
 
 import React, { useMemo, useState } from 'react';
+import {
+  CartesianGrid, ReferenceArea, ReferenceLine, ResponsiveContainer,
+  Scatter, ScatterChart, Tooltip, XAxis, YAxis,
+} from 'recharts';
 import { Card } from '../ui/Card';
 import { Select } from '../ui/Select';
 import { Input } from '../ui/Input';
@@ -45,6 +49,65 @@ const Verdict: React.FC<{ significant: boolean; text: string }> = ({ significant
     <span style={{ fontSize: 14, color: 'var(--gray-700)', lineHeight: 1.45 }}>{text}</span>
   </div>
 );
+
+const GROUP_B_COLOR = '#7C3AED';
+
+const padded = (vals: number[]): [number, number] => {
+  const lo = Math.min(...vals);
+  const hi = Math.max(...vals);
+  const pad = (hi - lo) * 0.12 || 1;
+  return [Math.floor(lo - pad), Math.ceil(hi + pad)];
+};
+
+// One-sample: each observed strength as a point, with the reference µ₀ (red),
+// the sample mean (blue) and the confidence-interval band shaded.
+const OneSampleChart: React.FC<{ d: OneSampleTTest }> = ({ d }) => {
+  const points = d.values.map((v, i) => ({ x: i + 1, y: v }));
+  const [lo, hi] = padded([...d.values, d.mu0, d.ci_low, d.ci_high]);
+  return (
+    <ResponsiveContainer width="100%" height={200}>
+      <ScatterChart margin={{ top: 10, right: 18, bottom: 6, left: -6 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--gray-100)" />
+        <XAxis type="number" dataKey="x" domain={[0.5, points.length + 0.5]} tick={false} axisLine={false} tickLine={false}
+          label={{ value: `${d.sample_count} cube results`, position: 'insideBottom', fontSize: 11, offset: -2 }} />
+        <YAxis type="number" dataKey="y" domain={[lo, hi]} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} unit=" MPa" width={54} />
+        <Tooltip formatter={(v) => [`${v} MPa`, 'strength']} labelFormatter={() => ''} />
+        <ReferenceArea y1={d.ci_low} y2={d.ci_high} fill="var(--blue)" fillOpacity={0.08} />
+        <ReferenceLine y={d.mu0} stroke="var(--red)" strokeDasharray="5 4"
+          label={{ value: `µ₀ ${d.mu0}`, fontSize: 11, fill: 'var(--red)', position: 'insideTopRight' }} />
+        <ReferenceLine y={d.mean} stroke="var(--blue)"
+          label={{ value: `mean ${d.mean}`, fontSize: 11, fill: 'var(--blue)', position: 'insideBottomRight' }} />
+        <Scatter data={points} fill="var(--blue)" />
+      </ScatterChart>
+    </ResponsiveContainer>
+  );
+};
+
+// Two-sample: the two groups as separate columns of points with their means.
+const TwoSampleChart: React.FC<{ r: TwoSampleTTest }> = ({ r }) => {
+  const spread = (vals: number[], centre: number) =>
+    vals.map((v, i) => ({ x: centre + (i - (vals.length - 1) / 2) * 0.08, y: v }));
+  const aPts = spread(r.group_a.values, 1);
+  const bPts = spread(r.group_b.values, 2);
+  const [lo, hi] = padded([...r.group_a.values, ...r.group_b.values]);
+  const short = (s: string) => (s.length > 16 ? `${s.slice(0, 15)}…` : s);
+  return (
+    <ResponsiveContainer width="100%" height={220}>
+      <ScatterChart margin={{ top: 10, right: 18, bottom: 6, left: -6 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--gray-100)" />
+        <XAxis type="number" dataKey="x" domain={[0.4, 2.6]} ticks={[1, 2]}
+          tickFormatter={(t) => (t === 1 ? short(r.group_a.label) : t === 2 ? short(r.group_b.label) : '')}
+          tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+        <YAxis type="number" dataKey="y" domain={[lo, hi]} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} unit=" MPa" width={54} />
+        <Tooltip formatter={(v) => [`${v} MPa`, 'strength']} labelFormatter={() => ''} />
+        {r.group_a.mean != null && <ReferenceLine y={r.group_a.mean} stroke="var(--blue)" strokeDasharray="4 4" />}
+        {r.group_b.mean != null && <ReferenceLine y={r.group_b.mean} stroke={GROUP_B_COLOR} strokeDasharray="4 4" />}
+        <Scatter name={r.group_a.label} data={aPts} fill="var(--blue)" />
+        <Scatter name={r.group_b.label} data={bPts} fill={GROUP_B_COLOR} />
+      </ScatterChart>
+    </ResponsiveContainer>
+  );
+};
 
 // ── One-sample panel ─────────────────────────────────────────────────────────
 
@@ -119,6 +182,7 @@ const OneSamplePanel: React.FC<{ pid: number; confidence: number }> = ({ pid, co
             <Stat label="df" value={fmt(data.df, 1)} />
             <Stat label="p-value" value={fmtP(data.p_value)} />
           </div>
+          {data.values.length >= 2 && <OneSampleChart d={data} />}
         </>
       )}
     </Card>
@@ -201,6 +265,7 @@ const TwoSamplePanel: React.FC<{ pid: number; confidence: number }> = ({ pid, co
             <Stat label="df" value={fmt(result.df, 1)} />
             <Stat label="p-value" value={fmtP(result.p_value)} />
           </div>
+          {result.group_a.values.length >= 2 && result.group_b.values.length >= 2 && <TwoSampleChart r={result} />}
         </>
       ) : null}
     </Card>

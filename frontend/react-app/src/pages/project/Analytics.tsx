@@ -33,8 +33,10 @@ const empty = <p className="text-muted" style={{ fontSize: 14, margin: 0 }}>No c
 
 const filterRow: React.CSSProperties = { display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 12 };
 
-// A recharts categorical-chart click carries the clicked datum in activePayload.
-type PointClick = { activePayload?: Array<{ payload: { sample_reference?: string | null } }> };
+// recharts v3 hands the click the active tick's index (activeTooltipIndex), not
+// a payload — so we look the datum up in the chart's own data array.
+type ChartClick = { activeTooltipIndex?: unknown };
+type TraceablePoint = { sample_reference?: string | null };
 
 export const Analytics: React.FC = () => {
   const { project } = useProject();
@@ -99,8 +101,10 @@ export const Analytics: React.FC = () => {
   const cusumData = cusum?.points ?? [];
 
   // Click a data point → open that cube's traceability chain.
-  const goToTrace = (state: unknown) => {
-    const ref = (state as PointClick)?.activePayload?.[0]?.payload?.sample_reference;
+  const goToTrace = (data: TraceablePoint[]) => (state: ChartClick) => {
+    const idx = Number(state?.activeTooltipIndex);
+    if (!Number.isInteger(idx) || idx < 0) return;
+    const ref = data[idx]?.sample_reference;
     if (ref) navigate(`${base}/trace?q=${encodeURIComponent(ref)}`);
   };
 
@@ -158,7 +162,7 @@ export const Analytics: React.FC = () => {
           {runData.length === 0 ? empty : (
             <>
               <ResponsiveContainer width="100%" height={260}>
-                <LineChart data={runData} style={{ cursor: 'pointer' }} onClick={goToTrace}>
+                <LineChart data={runData} style={{ cursor: 'pointer' }} onClick={goToTrace(runData)}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--gray-100)" />
                   <XAxis dataKey="idx" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} label={{ value: 'cube (chronological)', position: 'insideBottom', offset: -2, fontSize: 11 }} />
                   <YAxis tick={{ fontSize: 12 }} axisLine={false} tickLine={false} unit=" MPa" />
@@ -221,7 +225,7 @@ export const Analytics: React.FC = () => {
           {cusumData.length === 0 ? empty : (
             <>
               <ResponsiveContainer width="100%" height={260}>
-                <LineChart data={cusumData} style={{ cursor: 'pointer' }} onClick={goToTrace}>
+                <LineChart data={cusumData} style={{ cursor: 'pointer' }} onClick={goToTrace(cusumData)}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--gray-100)" />
                   <XAxis dataKey="index" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} label={{ value: 'cube number', position: 'insideBottom', offset: -2, fontSize: 11 }} />
                   <YAxis tick={{ fontSize: 12 }} axisLine={false} tickLine={false} unit=" MPa" />

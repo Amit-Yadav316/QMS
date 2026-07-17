@@ -167,6 +167,7 @@ export interface OneSampleTTest {
   mu0: number;
   mu0_basis: TTestBasis;
   grade_name: string | null;
+  values: number[];
   t_statistic: number;
   df: number;
   p_value: number;
@@ -200,6 +201,7 @@ export interface GroupSummary {
   sample_count: number;
   mean: number | null;
   std_dev: number | null;
+  values: number[];
 }
 
 export interface TwoSampleTTest {
