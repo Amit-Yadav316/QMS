@@ -5,13 +5,14 @@
 // One entry per project, keyed qms-chat-{pid}. Everything here is best-effort —
 // any storage/parse error degrades to "no history" rather than throwing.
 
-import type { ChartSpec } from '../api/chat';
+import type { ChartSpec, Clarification } from '../api/chat';
 
 export interface StoredMsg {
   role: 'user' | 'assistant';
   text: string;
   tools?: string[];
   chart?: ChartSpec | null;
+  clarification?: Clarification | null;
 }
 
 interface ChatEnvelope {
