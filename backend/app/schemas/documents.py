@@ -15,6 +15,11 @@ class DocumentCategory(str, enum.Enum):
     POUR_RECORD = "POUR_RECORD"
     GRADE_DETAIL = "GRADE_DETAIL"
     CUBE_TEST_REGISTER = "CUBE_TEST_REGISTER"
+    NCR_REPORT = "NCR_REPORT"  # PDF attached to a notify-RMC on an NCR
+    # Conformance Analyser site photos, tagged by phase.
+    CONFORMANCE_PRE = "CONFORMANCE_PRE"
+    CONFORMANCE_POST = "CONFORMANCE_POST"
+    CONFORMANCE_RCC = "CONFORMANCE_RCC"
     OTHER = "OTHER"
 
 

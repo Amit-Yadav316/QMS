@@ -10,6 +10,7 @@ from app.routers import (
     catalog,
     chatbot,
     confirmations,
+    conformance,
     cube_tests,
     directory,
     dispatch_token,
@@ -78,6 +79,7 @@ def create_app() -> FastAPI:
     app.include_router(alerts.router, prefix=settings.API_V1_PREFIX)
     app.include_router(traceability.router, prefix=settings.API_V1_PREFIX)
     app.include_router(documents.router, prefix=settings.API_V1_PREFIX)
+    app.include_router(conformance.router, prefix=settings.API_V1_PREFIX)
     app.include_router(chatbot.router, prefix=settings.API_V1_PREFIX)
 
     return app
