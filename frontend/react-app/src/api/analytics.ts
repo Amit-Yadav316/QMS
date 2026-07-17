@@ -58,9 +58,11 @@ export const analyticsApi = {
       .get<DistributionCurve>(`/projects/${projectId}/analytics/distribution`, { params: filters })
       .then((r) => r.data);
   },
-  graphicalSummary(projectId: number, filters: QualityFilters = {}): Promise<GraphicalSummary> {
+  graphicalSummary(projectId: number, filters: QualityFilters = {}, confidence?: number): Promise<GraphicalSummary> {
     return api
-      .get<GraphicalSummary>(`/projects/${projectId}/analytics/graphical-summary`, { params: filters })
+      .get<GraphicalSummary>(`/projects/${projectId}/analytics/graphical-summary`, {
+        params: { ...filters, ...(confidence != null ? { confidence } : {}) },
+      })
       .then((r) => r.data);
   },
   outliers(projectId: number, filters: QualityFilters = {}): Promise<OutlierAnalysis> {

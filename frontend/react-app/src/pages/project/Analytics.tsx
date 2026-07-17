@@ -83,14 +83,21 @@ export const Analytics: React.FC = () => {
     .filter((c) => c.status === 'ACCEPTED')
     .map((c) => ({ label: c.contractor_org_name, value: c.contractor_org_id }));
 
-  // Default each chart to the freshest batch that already has lab results (so the
-  // default view shows real data), mapping its grade/tower names back to ids;
-  // fall back to the first option otherwise.
-  const recent = samples.find((s) => s.tests.length > 0) ?? samples[0];
-  const recentGradeId = recent ? grades.find((g) => g.grade_name === recent.grade_name)?.grade_id : undefined;
-  const recentTowerId = recent ? towers.find((t) => t.tower_name === recent.tower_name)?.tower_id : undefined;
-  const firstGrade = String(recentGradeId ?? grades[0]?.grade_id ?? '');
-  const firstTower = String(recentTowerId ?? towers[0]?.tower_id ?? '');
+  // Default every chart to the project's most-used grade across ALL towers and
+  // ALL contractors (the widest, most representative view); the run chart adds a
+  // last-7-days window on top. Most-used grade ≈ the grade with the most cube
+  // samples; fall back to the first grade.
+  const gradeCounts = new Map<string, number>();
+  for (const s of samples) {
+    if (!s.grade_name) continue;
+    gradeCounts.set(s.grade_name, (gradeCounts.get(s.grade_name) ?? 0) + 1);
+  }
+  let topGrade = '';
+  let topCount = -1;
+  for (const [name, count] of gradeCounts) if (count > topCount) { topCount = count; topGrade = name; }
+  const topGradeId = grades.find((g) => g.grade_name === topGrade)?.grade_id;
+  const firstGrade = String(topGradeId ?? grades[0]?.grade_id ?? '');
+  const firstTower = 'ALL'; // all towers by default
 
   // ── Per-chart filter state ──
   const [rG, setRG] = useState(''); const [rT, setRT] = useState(''); const [rC, setRC] = useState('ALL');

@@ -43,13 +43,14 @@ export const GraphicalSummaryPanel = forwardRef<HTMLDivElement, Props>(function 
   const [g, setG] = useState('');
   const [t, setT] = useState('');
   const [c, setC] = useState('ALL');
+  const [conf, setConf] = useState('0.95'); // CI confidence level
   const grade = g || firstGrade;
   const tower = t || firstTower;
 
   const { data } = useGraphicalSummary(pid, {
     grade_id: num(grade), tower_id: tid(tower),
     contractor_id: c !== 'ALL' ? Number(c) : undefined,
-  });
+  }, Number(conf));
 
   const hasStats = data != null && data.mean != null && data.histogram.length > 0;
 
@@ -80,8 +81,8 @@ export const GraphicalSummaryPanel = forwardRef<HTMLDivElement, Props>(function 
         {clause && <div className="qms-clause-block">{clause}</div>}
         <p className="qms-chart-sub">
           Distribution shape, normality and dispersion of cube strengths — histogram with a fitted
-          normal curve and kernel density, a boxplot, a normal probability plot, and the
-          Anderson–Darling test for normality.
+          normal curve and kernel density, a normal probability plot, and the Anderson–Darling test
+          for normality.
         </p>
 
         <div style={filterRow}>
@@ -91,6 +92,13 @@ export const GraphicalSummaryPanel = forwardRef<HTMLDivElement, Props>(function 
             <Select label="Contractor" fullWidth={false} value={c} onChange={(e) => setC(e.target.value)}
               options={[{ label: 'All contractors', value: 'ALL' }, ...contractorOpts]} />
           )}
+          <Select label="Confidence" fullWidth={false} value={conf} onChange={(e) => setConf(e.target.value)}
+            options={[
+              { label: '90%', value: '0.90' },
+              { label: '95%', value: '0.95' },
+              { label: '99%', value: '0.99' },
+              { label: '99.9%', value: '0.999' },
+            ]} />
         </div>
 
         {!hasStats ? (
@@ -209,7 +217,7 @@ export const GraphicalSummaryPanel = forwardRef<HTMLDivElement, Props>(function 
               )}
 
               <div className="qms-gs-stats-title">
-                {Math.round((data!.ci_confidence ?? 0.95) * 100)}% CI for the mean
+                {((data!.ci_confidence ?? 0.95) * 100).toFixed(1).replace(/\.0$/, '')}% CI for the mean
               </div>
               <div className="qms-gs-ci">
                 {fmt(data!.ci_mean_low)} &nbsp;–&nbsp; {fmt(data!.ci_mean_high)} MPa
