@@ -24,6 +24,7 @@ interface Props {
   firstGrade: string;
   firstTower: string;
   tid: (v: string) => number | undefined;
+  clause?: React.ReactNode; // code-clause citation shown under the heading
 }
 
 const num = (v: string): number | undefined => (v ? Number(v) : undefined);
@@ -64,7 +65,7 @@ const BoxPlot: React.FC<{ min: number; q1: number; median: number; q3: number; m
 };
 
 export const GraphicalSummaryPanel = forwardRef<HTMLDivElement, Props>(function GraphicalSummaryPanel(
-  { pid, gradeOpts, towerOpts, contractorOpts, firstGrade, firstTower, tid }, ref,
+  { pid, gradeOpts, towerOpts, contractorOpts, firstGrade, firstTower, tid, clause }, ref,
 ) {
   const [g, setG] = useState('');
   const [t, setT] = useState('');
@@ -103,6 +104,7 @@ export const GraphicalSummaryPanel = forwardRef<HTMLDivElement, Props>(function 
           {data?.grade_name ? ` · ${data.grade_name}` : ''}
           {hasStats ? ` (n ${data!.sample_count})` : ''}
         </h3>
+        {clause && <div className="qms-clause-block">{clause}</div>}
         <p className="qms-chart-sub">
           Distribution shape, normality and dispersion of cube strengths — histogram with a fitted
           normal curve and kernel density, a boxplot, a normal probability plot, and the

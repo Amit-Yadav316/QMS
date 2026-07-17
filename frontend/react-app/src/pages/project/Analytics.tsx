@@ -19,14 +19,20 @@ import { DateRangeFilter } from '../../components/analytics/DateRangeFilter';
 import { presetRange, type DatePreset } from '../../components/analytics/dateRange';
 import { TTestSection } from '../../components/analytics/TTestSection';
 import { GraphicalSummaryPanel } from '../../components/analytics/GraphicalSummaryPanel';
+import { CodeStandardBar } from '../../components/analytics/CodeStandardBar';
+import { ClauseTag } from '../../components/analytics/ClauseTag';
 import { useCusum, useDistribution, useRunChart } from '../../queries/analytics';
 import { useProjectTowers } from '../../queries/floors';
 import { useGrades } from '../../queries/catalog';
 import { useProjectContractors } from '../../queries/contractors';
+import { useDocuments } from '../../queries/documents';
 import { cubeTestsApi } from '../../api/cubeTests';
 import { exportChartsPdf, type ChartSection } from '../../lib/exportChartsPdf';
+import type { CodeStandard } from '../../lib/codeStandards';
 import type { CusumPoint } from '../../types/master';
 import './Analytics.css';
+
+const CODE_KEY = 'qms-analytics-code';
 
 const n = (v: string): number | undefined => (v ? Number(v) : undefined);
 
@@ -49,6 +55,17 @@ export const Analytics: React.FC = () => {
   const { data: towers = [] } = useProjectTowers(pid);
   const { data: grades = [] } = useGrades();
   const { data: contractors = [] } = useProjectContractors(pid, isClient);
+  const { data: documents = [] } = useDocuments(pid);
+
+  // Which design code the analytics are read under. IS is the only implemented
+  // standard; picking ACI hides the analytics (see below). Persisted per browser.
+  const [code, setCode] = useState<CodeStandard>(() => {
+    try { return localStorage.getItem(CODE_KEY) === 'ACI' ? 'ACI' : 'IS'; } catch { return 'IS'; }
+  });
+  const changeCode = (c: CodeStandard) => {
+    setCode(c);
+    try { localStorage.setItem(CODE_KEY, c); } catch { /* ignore */ }
+  };
   const { data: samples = [] } = useQuery({
     queryKey: ['cube-samples', pid],
     queryFn: () => cubeTestsApi.listSamples(pid),
@@ -148,6 +165,21 @@ export const Analytics: React.FC = () => {
 
   return (
     <div className="qms-analytics">
+      {/* Global code-standard selector (IS implemented; ACI hides analytics) */}
+      <CodeStandardBar pid={pid} code={code} onCode={changeCode} documents={documents} />
+
+      {code === 'ACI' ? (
+        <Card>
+          <h3 className="qms-chart-heading">Analytics not available for ACI</h3>
+          <p className="text-muted" style={{ fontSize: 14, margin: 0, lineHeight: 1.6 }}>
+            The analytics engine is currently implemented against the <strong>Indian Standard</strong>
+            {' '}(IS 456:2000 acceptance criteria and IS 10262:2019 mix-design statistics). Analytics
+            under <strong>ACI 318 / ACI 214</strong> are not available yet — switch the code standard
+            back to <strong>IS</strong> to view the charts.
+          </p>
+        </Card>
+      ) : (
+      <>
       {/* PDF export toolbar */}
       <div className="qms-an-export">
         <span className="qms-an-export-label">Export to PDF:</span>
@@ -172,12 +204,14 @@ export const Analytics: React.FC = () => {
         firstGrade={firstGrade}
         firstTower={firstTower}
         tid={tid}
+        clause={<ClauseTag pid={pid} clause="graphical" documents={documents} />}
       />
 
       {/* 2 · Quality control run chart */}
       <div ref={runRef}>
         <Card>
           <h3 className="qms-chart-heading">Quality control run chart</h3>
+          <div className="qms-clause-block"><ClauseTag pid={pid} clause="run" documents={documents} /></div>
           <div style={filterRow}>
             <Select label="Grade" fullWidth={false} value={runGrade} onChange={(e) => setRG(e.target.value)} options={gradeOpts} />
             <Select label="Tower" fullWidth={false} value={runTower} onChange={(e) => setRT(e.target.value)} options={towerOpts} />
@@ -211,6 +245,7 @@ export const Analytics: React.FC = () => {
       <div ref={distRef}>
         <Card>
           <h3 className="qms-chart-heading">Normal distribution {dist?.mean != null ? `(X̄ ${dist.mean}, S ${dist.std_dev}, n ${dist.sample_count})` : ''}</h3>
+          <div className="qms-clause-block"><ClauseTag pid={pid} clause="distribution" documents={documents} /></div>
           <div style={filterRow}>
             <Select label="Grade" fullWidth={false} value={distGrade} onChange={(e) => setDG(e.target.value)} options={gradeOpts} />
             <Select label="Tower" fullWidth={false} value={distTower} onChange={(e) => setDT(e.target.value)} options={towerOpts} />
@@ -241,6 +276,7 @@ export const Analytics: React.FC = () => {
       <div ref={cusumRef}>
         <Card>
           <h3 className="qms-chart-heading">CUSUM control chart {cusum?.target_mean != null ? `(target mean ${cusum.target_mean} MPa)` : ''}</h3>
+          <div className="qms-clause-block"><ClauseTag pid={pid} clause="cusum" documents={documents} /></div>
           <p className="qms-chart-sub">Cumulative sum of (observed − target mean) by cube. A sustained downward slope signals a fall in mean strength earlier than pass/fail alone.</p>
           <div style={filterRow}>
             <Select label="Grade" fullWidth={false} value={cusumGrade} onChange={(e) => setUG(e.target.value)} options={gradeOpts} />
@@ -272,7 +308,12 @@ export const Analytics: React.FC = () => {
       </div>
 
       {/* 4 · Statistical tests (Student's t) */}
+      <div className="qms-clause-block">
+        <ClauseTag pid={pid} clause="ttest" documents={documents} />
+      </div>
       <TTestSection pid={pid} oneSampleRef={oneSampleRef} twoSampleRef={twoSampleRef} />
+      </>
+      )}
     </div>
   );
 };
