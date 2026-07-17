@@ -20,6 +20,10 @@ class DocumentCategory(str, enum.Enum):
     CONFORMANCE_PRE = "CONFORMANCE_PRE"
     CONFORMANCE_POST = "CONFORMANCE_POST"
     CONFORMANCE_RCC = "CONFORMANCE_RCC"
+    # Reference code-standard PDFs the analytics clause tags link to.
+    CODE_IS456 = "CODE_IS456"
+    CODE_IS10262 = "CODE_IS10262"
+    CODE_ACI = "CODE_ACI"
     OTHER = "OTHER"
 
 
