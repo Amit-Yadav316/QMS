@@ -119,7 +119,8 @@ export const Analytics: React.FC = () => {
   const cusumRef = useRef<HTMLDivElement>(null);
   const oneSampleRef = useRef<HTMLDivElement>(null);
   const twoSampleRef = useRef<HTMLDivElement>(null);
-  const [sel, setSel] = useState({ run: true, dist: true, cusum: true, oneSample: false, twoSample: false });
+  // Nothing pre-selected — the user picks exactly which charts go into the PDF.
+  const [sel, setSel] = useState({ run: false, dist: false, cusum: false, oneSample: false, twoSample: false });
   const [exporting, setExporting] = useState(false);
 
   const handleExport = async () => {
