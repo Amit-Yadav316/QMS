@@ -231,3 +231,35 @@
   cursor: pointer;
 }
 .qms-clause-pdf:hover { text-decoration: underline; }
+
+/* Graphical-summary data-integrity alert + help text */
+.qms-gs-alert {
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  background: var(--red-light, #fde8e8);
+  border: 1px solid var(--red, #e02424);
+  border-left-width: 4px;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--gray-800);
+}
+.qms-gs-help {
+  margin: 10px 0 0;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--gray-500);
+}
+.qms-gs-help strong { color: var(--gray-700); font-weight: 700; }
+
+/* Outlier-scan summary banner */
+.qms-out-summary {
+  margin-top: 12px;
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--gray-800);
+}
+.qms-out-summary.is-ok { background: var(--green-light); border: 1px solid #84e1bc; }
+.qms-out-summary.is-warn { background: var(--amber-light); border: 1px solid var(--amber); }

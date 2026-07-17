@@ -1,9 +1,9 @@
 // Graphical summary — a Minitab-style descriptive report for one filtered cube
 // strength dataset: histogram with a fitted normal PDF + Gaussian KDE overlay, a
-// boxplot, a normal probability (Q–Q) plot, and a panel of descriptive stats
-// with the Anderson–Darling normality test and a 95% CI for the mean. Every
-// number comes from the backend (/analytics/graphical-summary); the frontend
-// only lays it out. See backend/app/core/statistics.py:graphical_summary.
+// normal probability (Q–Q) plot, and a panel of descriptive stats with the
+// Anderson–Darling normality test and a 95% CI for the mean. Every number comes
+// from the backend (/analytics/graphical-summary); the frontend only lays it out.
+// See backend/app/core/statistics.py:graphical_summary.
 
 import React, { forwardRef, useState } from 'react';
 import {
@@ -35,34 +35,7 @@ const filterRow: React.CSSProperties = {
   display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 12,
 };
 
-// Horizontal boxplot (min–Q1–median–Q3–max) drawn in a fixed 0..1000 viewBox and
-// mapped from the data range, so it scales with its container.
-const BoxPlot: React.FC<{ min: number; q1: number; median: number; q3: number; max: number }> = ({
-  min, q1, median, q3, max,
-}) => {
-  const lo = min, hi = max;
-  const span = hi - lo || 1;
-  const X = (v: number) => 30 + ((v - lo) / span) * 940; // 30..970 px
-  const yMid = 40;
-  return (
-    <svg viewBox="0 0 1000 80" width="100%" height={80} preserveAspectRatio="none" role="img"
-      aria-label="Boxplot of strengths">
-      {/* whiskers */}
-      <line x1={X(min)} y1={yMid} x2={X(q1)} y2={yMid} stroke="var(--gray-400)" strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
-      <line x1={X(q3)} y1={yMid} x2={X(max)} y2={yMid} stroke="var(--gray-400)" strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
-      <line x1={X(min)} y1={yMid - 10} x2={X(min)} y2={yMid + 10} stroke="var(--gray-400)" strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
-      <line x1={X(max)} y1={yMid - 10} x2={X(max)} y2={yMid + 10} stroke="var(--gray-400)" strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
-      {/* box */}
-      <rect x={X(q1)} y={yMid - 16} width={Math.max(1, X(q3) - X(q1))} height={32}
-        fill="var(--blue)" fillOpacity={0.14} stroke="var(--blue)" strokeWidth={1.5} rx={2} vectorEffect="non-scaling-stroke" />
-      {/* median */}
-      <line x1={X(median)} y1={yMid - 16} x2={X(median)} y2={yMid + 16} stroke="var(--blue)" strokeWidth={2.5} vectorEffect="non-scaling-stroke" />
-      {/* end labels */}
-      <text x={X(min)} y={yMid + 30} fontSize={11} fill="var(--gray-500)" textAnchor="middle">{fmt(min)}</text>
-      <text x={X(max)} y={yMid + 30} fontSize={11} fill="var(--gray-500)" textAnchor="middle">{fmt(max)}</text>
-    </svg>
-  );
-};
+const intTick = (v: number | string): string => String(Math.round(Number(v)));
 
 export const GraphicalSummaryPanel = forwardRef<HTMLDivElement, Props>(function GraphicalSummaryPanel(
   { pid, gradeOpts, towerOpts, contractorOpts, firstGrade, firstTower, tid, clause }, ref,
@@ -125,17 +98,26 @@ export const GraphicalSummaryPanel = forwardRef<HTMLDivElement, Props>(function 
             Need at least two cube results for this selection to build the summary.
           </p>
         ) : (
+          <>
+            {data!.std_dev === 0 && (
+              <div className="qms-gs-alert">
+                <strong>⚠ Zero variance — all {data!.sample_count} results are identical.</strong> Independent
+                physical cube tests should never produce an exactly constant strength; this pattern is a strong
+                sign the values were copied or fabricated rather than measured. Investigate before accepting.
+              </div>
+            )}
           <div className="qms-gs-grid">
-            {/* Left: the three plots */}
+            {/* Left: the two plots */}
             <div className="qms-gs-plots">
               <div>
                 <div className="qms-gs-plot-title">Histogram · fitted normal &amp; KDE</div>
-                <ResponsiveContainer width="100%" height={230}>
-                  <ComposedChart data={chartRows} margin={{ top: 8, right: 8, bottom: 4, left: 0 }}>
+                <ResponsiveContainer width="100%" height={250}>
+                  <ComposedChart data={chartRows} margin={{ top: 16, right: 12, bottom: 16, left: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--gray-100)" />
                     <XAxis dataKey="x" type="number" domain={['dataMin', 'dataMax']} tick={{ fontSize: 11 }}
-                      axisLine={false} tickLine={false} unit=" MPa" />
-                    <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false}
+                      axisLine={false} tickLine={false} tickFormatter={intTick} interval="preserveStartEnd" minTickGap={28}
+                      height={28} label={{ value: 'Strength (MPa)', position: 'insideBottom', offset: -4, fontSize: 11, fill: 'var(--gray-500)' }} />
+                    <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} width={34}
                       label={{ value: 'frequency', angle: -90, position: 'insideLeft', fontSize: 11, fill: 'var(--gray-500)' }} />
                     <Tooltip
                       formatter={(v, name) =>
@@ -149,30 +131,30 @@ export const GraphicalSummaryPanel = forwardRef<HTMLDivElement, Props>(function 
                       stroke="var(--amber, #d97706)" strokeWidth={2} strokeDasharray="5 3" isAnimationActive={false} />
                     {data!.mean != null && (
                       <ReferenceLine x={data!.mean} stroke="var(--green)" strokeDasharray="4 4"
-                        label={{ value: 'X̄', fontSize: 11, fill: 'var(--green)' }} />
+                        label={{ value: 'X̄', position: 'top', fontSize: 11, fill: 'var(--green)' }} />
                     )}
                     {data!.fck != null && (
                       <ReferenceLine x={data!.fck} stroke="var(--red)" strokeDasharray="4 4"
-                        label={{ value: `fck ${data!.fck}`, fontSize: 11, fill: 'var(--red)' }} />
+                        label={{ value: `fck ${data!.fck}`, position: 'top', fontSize: 11, fill: 'var(--red)' }} />
                     )}
                   </ComposedChart>
                 </ResponsiveContainer>
-              </div>
-
-              <div>
-                <div className="qms-gs-plot-title">Boxplot</div>
-                <BoxPlot min={data!.minimum!} q1={data!.q1!} median={data!.median!} q3={data!.q3!} max={data!.maximum!} />
+                <p className="qms-chart-hint" style={{ marginTop: 0 }}>
+                  Bars = how many results fall in each strength band. The solid curve is the best-fit
+                  normal; the dashed curve is the data&apos;s actual shape (kernel density).
+                </p>
               </div>
 
               <div>
                 <div className="qms-gs-plot-title">Normal probability plot (Q–Q)</div>
-                <ResponsiveContainer width="100%" height={210}>
-                  <ScatterChart margin={{ top: 8, right: 12, bottom: 4, left: 0 }}>
+                <ResponsiveContainer width="100%" height={220}>
+                  <ScatterChart margin={{ top: 8, right: 12, bottom: 16, left: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--gray-100)" />
                     <XAxis type="number" dataKey="x" name="observed" domain={[qqLo, qqHi]} tick={{ fontSize: 11 }}
-                      axisLine={false} tickLine={false} unit=" MPa" />
+                      axisLine={false} tickLine={false} tickFormatter={intTick} minTickGap={28} height={28}
+                      label={{ value: 'Observed (MPa)', position: 'insideBottom', offset: -4, fontSize: 11, fill: 'var(--gray-500)' }} />
                     <YAxis type="number" dataKey="y" name="theoretical" domain={[qqLo, qqHi]} tick={{ fontSize: 11 }}
-                      axisLine={false} tickLine={false}
+                      axisLine={false} tickLine={false} tickFormatter={intTick} width={34}
                       label={{ value: 'expected', angle: -90, position: 'insideLeft', fontSize: 11, fill: 'var(--gray-500)' }} />
                     <Tooltip cursor={{ strokeDasharray: '3 3' }}
                       formatter={(v) => `${Number(v).toFixed(1)} MPa`} />
@@ -216,6 +198,13 @@ export const GraphicalSummaryPanel = forwardRef<HTMLDivElement, Props>(function 
                   <span className={`qms-gs-verdict ${data!.is_normal ? 'is-ok' : 'is-warn'}`}>
                     {data!.is_normal ? 'Data appears normal (p > 0.05)' : 'Departs from normal (p ≤ 0.05)'}
                   </span>
+                  <p className="qms-gs-help">
+                    <strong>A²</strong> measures how far the results stray from a bell curve — bigger means a
+                    worse fit. <strong>p</strong> is the chance of seeing that much departure if the strengths
+                    were truly normal: <strong>p &gt; 0.05</strong> is consistent with normal, while
+                    <strong> p ≤ 0.05</strong> flags a real departure (heavy skew, clustering, or repeated/
+                    fabricated values).
+                  </p>
                 </>
               )}
 
@@ -227,6 +216,7 @@ export const GraphicalSummaryPanel = forwardRef<HTMLDivElement, Props>(function 
               </div>
             </div>
           </div>
+          </>
         )}
       </Card>
     </div>

@@ -19,6 +19,7 @@ import { DateRangeFilter } from '../../components/analytics/DateRangeFilter';
 import { presetRange, type DatePreset } from '../../components/analytics/dateRange';
 import { TTestSection } from '../../components/analytics/TTestSection';
 import { GraphicalSummaryPanel } from '../../components/analytics/GraphicalSummaryPanel';
+import { OutliersPanel } from '../../components/analytics/OutliersPanel';
 import { CodeStandardBar } from '../../components/analytics/CodeStandardBar';
 import { ClauseTag } from '../../components/analytics/ClauseTag';
 import { useCusum, useDistribution, useRunChart } from '../../queries/analytics';
@@ -133,18 +134,20 @@ export const Analytics: React.FC = () => {
 
   // ── PDF export ──
   const graphicalRef = useRef<HTMLDivElement>(null);
+  const outliersRef = useRef<HTMLDivElement>(null);
   const runRef = useRef<HTMLDivElement>(null);
   const distRef = useRef<HTMLDivElement>(null);
   const cusumRef = useRef<HTMLDivElement>(null);
   const oneSampleRef = useRef<HTMLDivElement>(null);
   const twoSampleRef = useRef<HTMLDivElement>(null);
   // Nothing pre-selected — the user picks exactly which charts go into the PDF.
-  const [sel, setSel] = useState({ graphical: false, run: false, dist: false, cusum: false, oneSample: false, twoSample: false });
+  const [sel, setSel] = useState({ graphical: false, outliers: false, run: false, dist: false, cusum: false, oneSample: false, twoSample: false });
   const [exporting, setExporting] = useState(false);
 
   const handleExport = async () => {
     const sections: ChartSection[] = [];
     if (sel.graphical && graphicalRef.current) sections.push({ title: 'Graphical summary', el: graphicalRef.current });
+    if (sel.outliers && outliersRef.current) sections.push({ title: 'Outlier scan', el: outliersRef.current });
     if (sel.run && runRef.current) sections.push({ title: 'Quality control run chart', el: runRef.current });
     if (sel.dist && distRef.current) sections.push({ title: 'Normal distribution', el: distRef.current });
     if (sel.cusum && cusumRef.current) sections.push({ title: 'CUSUM control chart', el: cusumRef.current });
@@ -184,6 +187,7 @@ export const Analytics: React.FC = () => {
       <div className="qms-an-export">
         <span className="qms-an-export-label">Export to PDF:</span>
         <label><input type="checkbox" checked={sel.graphical} onChange={(e) => setSel((s) => ({ ...s, graphical: e.target.checked }))} /> Graphical summary</label>
+        <label><input type="checkbox" checked={sel.outliers} onChange={(e) => setSel((s) => ({ ...s, outliers: e.target.checked }))} /> Outlier scan</label>
         <label><input type="checkbox" checked={sel.run} onChange={(e) => setSel((s) => ({ ...s, run: e.target.checked }))} /> Run chart</label>
         <label><input type="checkbox" checked={sel.dist} onChange={(e) => setSel((s) => ({ ...s, dist: e.target.checked }))} /> Distribution</label>
         <label><input type="checkbox" checked={sel.cusum} onChange={(e) => setSel((s) => ({ ...s, cusum: e.target.checked }))} /> CUSUM</label>
@@ -207,7 +211,19 @@ export const Analytics: React.FC = () => {
         clause={<ClauseTag pid={pid} clause="graphical" documents={documents} />}
       />
 
-      {/* 2 · Quality control run chart */}
+      {/* 2 · Outlier scan (modified Thompson τ) */}
+      <OutliersPanel
+        ref={outliersRef}
+        pid={pid}
+        gradeOpts={gradeOpts}
+        towerOpts={towerOpts}
+        contractorOpts={contractorOpts}
+        firstGrade={firstGrade}
+        firstTower={firstTower}
+        tid={tid}
+      />
+
+      {/* 3 · Quality control run chart */}
       <div ref={runRef}>
         <Card>
           <h3 className="qms-chart-heading">Quality control run chart</h3>

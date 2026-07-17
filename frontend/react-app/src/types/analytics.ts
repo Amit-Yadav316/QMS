@@ -158,6 +158,26 @@ export interface GraphicalSummary {
   prob_points: ProbPoint[];
 }
 
+// ── Outlier scan (modified Thompson τ) ──────────────────────────────────────
+export interface OutlierPoint {
+  index: number; // 1-based chronological position
+  value: number;
+  is_outlier: boolean;
+}
+export interface OutlierAnalysis {
+  sample_count: number;
+  grade_name: string | null;
+  mean: number | null;
+  std_dev: number | null;
+  outlier_count: number;
+  clean_mean: number | null;
+  clean_std_dev: number | null;
+  tau: number | null;
+  threshold: number | null; // τ·S — rejection distance from the mean
+  points: OutlierPoint[];
+  outliers: number[];
+}
+
 export interface TargetMeanRow {
   grade_name: string;
   fck: number;

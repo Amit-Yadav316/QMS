@@ -8,6 +8,7 @@ import type {
   DistributionCurve,
   GraphicalSummary,
   OneSampleParams,
+  OutlierAnalysis,
   OneSampleTTest,
   OverviewKpis,
   QualityAnalytics,
@@ -60,6 +61,11 @@ export const analyticsApi = {
   graphicalSummary(projectId: number, filters: QualityFilters = {}): Promise<GraphicalSummary> {
     return api
       .get<GraphicalSummary>(`/projects/${projectId}/analytics/graphical-summary`, { params: filters })
+      .then((r) => r.data);
+  },
+  outliers(projectId: number, filters: QualityFilters = {}): Promise<OutlierAnalysis> {
+    return api
+      .get<OutlierAnalysis>(`/projects/${projectId}/analytics/outliers`, { params: filters })
       .then((r) => r.data);
   },
   cusum(projectId: number, filters: QualityFilters = {}): Promise<CusumChart> {

@@ -36,6 +36,12 @@ export const useGraphicalSummary = (pid: number, filters: QualityFilters = {}) =
     queryFn: () => analyticsApi.graphicalSummary(pid, filters),
   });
 
+export const useOutliers = (pid: number, filters: QualityFilters = {}) =>
+  useQuery({
+    queryKey: ['analytics-outliers', pid, filters],
+    queryFn: () => analyticsApi.outliers(pid, filters),
+  });
+
 export const useCusum = (pid: number, filters: QualityFilters = {}) =>
   useQuery({ queryKey: ['analytics-cusum', pid, filters], queryFn: () => analyticsApi.cusum(pid, filters) });
 
