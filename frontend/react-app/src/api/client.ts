@@ -31,6 +31,12 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+  // For multipart uploads, drop the instance's default application/json so the
+  // browser sets multipart/form-data WITH its boundary. Without this the server
+  // can't parse the body and reports the file field as required (422).
+  if (typeof FormData !== 'undefined' && config.data instanceof FormData) {
+    config.headers.delete('Content-Type');
+  }
   return config;
 });
 
