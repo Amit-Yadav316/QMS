@@ -81,9 +81,6 @@ from app.schemas.analytics import (
 # noisy computed one.
 _MIN_SAMPLES_FOR_STDEV = 30
 
-# Strength-distribution buckets (MPa), in display order.
-_BUCKET_ORDER = ["<35", "35-40", "40-45", "45-50", "50-55", "55+"]
-
 
 def _pct(numerator: int, denominator: int) -> float | None:
     """Percentage, or None when there's nothing to divide by."""
@@ -979,26 +976,23 @@ class AnalyticsService:
         ]
 
     async def _strength_distribution(self, conds: list) -> list[StrengthBucket]:
-        bucket = case(
-            (CubeTest.observed_strength_mpa < 35, "<35"),
-            (CubeTest.observed_strength_mpa < 40, "35-40"),
-            (CubeTest.observed_strength_mpa < 45, "40-45"),
-            (CubeTest.observed_strength_mpa < 50, "45-50"),
-            (CubeTest.observed_strength_mpa < 55, "50-55"),
-            else_="55+",
-        )
+        """Histogram of observed strengths, binned over the data's own range.
+
+        The bands used to be hardcoded starting at 35 MPa (<35, 35-40, …). On an
+        M25 or M30 project — the common case — every result lands under 35, so
+        the chart collapsed to a single meaningless bar. Binning from the actual
+        min/max keeps it informative at any grade.
+        """
         rows = (
             await self.session.execute(
-                self._ct_join(bucket.label("bucket"), func.count(CubeTest.test_id))
-                .where(*conds)
-                .group_by(bucket)
+                self._ct_join(CubeTest.observed_strength_mpa).where(*conds)
             )
-        ).all()
-        counts = {label: count for label, count in rows}
+        ).scalars().all()
+        observed = [float(x) for x in rows]
         return [
-            StrengthBucket(label=label, count=counts[label])
-            for label in _BUCKET_ORDER
-            if label in counts
+            StrengthBucket(label=f"{lo:g}-{hi:g}", count=count)
+            for lo, hi, count in statistics.histogram_buckets(observed)
+            if count
         ]
 
     async def _result_breakdown(self, conds: list) -> list[ResultBreakdown]:

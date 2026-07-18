@@ -409,15 +409,32 @@ class DispatchService:
     # ── QE inbox ───────────────────────────────────────────────────────────────
 
     async def qe_inbox(self, project: Project) -> list[QEReviewItem]:
-        """Deliveries awaiting the QE's in-situ sign-off (PENDING_QE)."""
-        dispatches = await self.repo.list_for_project(project.project_id)
+        """Deliveries awaiting the QE's in-situ sign-off (PENDING_QE).
+
+        Filtered in SQL, joining the supplier and grade in the same pass. It used
+        to load every dispatch on the project, run ~5 queries per dispatch, then
+        discard all but PENDING_QE — thousands of round-trips on a mature project
+        for an inbox that is normally near-empty, and this endpoint is polled.
+        """
+        rows = (
+            await self.session.execute(
+                select(RMCDispatch, TruckDispatch, Supplier, Grade)
+                .join(
+                    TruckDispatch,
+                    TruckDispatch.dispatch_id == RMCDispatch.dispatch_id,
+                )
+                .outerjoin(Supplier, Supplier.supplier_id == RMCDispatch.supplier_id)
+                .outerjoin(Grade, Grade.grade_id == RMCDispatch.grade_id)
+                .where(
+                    RMCDispatch.project_id == project.project_id,
+                    TruckDispatch.status == TruckStatus.PENDING_QE,
+                )
+                .order_by(RMCDispatch.dispatch_id)
+            )
+        ).all()
+
         items: list[QEReviewItem] = []
-        for dispatch in dispatches:
-            truck = await self.trucks.get_for_dispatch(dispatch.dispatch_id)
-            if not truck or truck.status != TruckStatus.PENDING_QE:
-                continue
-            supplier = await self.session.get(Supplier, dispatch.supplier_id)
-            grade = await self.session.get(Grade, dispatch.grade_id)
+        for dispatch, truck, supplier, grade in rows:
             items.append(
                 QEReviewItem(
                     dispatch_id=dispatch.dispatch_id,

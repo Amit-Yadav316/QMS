@@ -398,6 +398,21 @@ def _histogram(ordered: list[float], bins: int) -> tuple[list[tuple[float, float
     return bars, width
 
 
+def histogram_buckets(
+    sample: list[float], *, bins: int = 6
+) -> list[tuple[float, float, int]]:
+    """Equal-width histogram over the sample's own range → ``(lo, hi, count)``.
+
+    Public wrapper over the same binning ``graphical_summary`` uses, so the
+    quality dashboard's strength distribution and the graphical summary agree on
+    where the bars fall.
+    """
+    if not sample:
+        return []
+    bars, _ = _histogram(sorted(float(x) for x in sample), bins)
+    return bars
+
+
 def graphical_summary(
     sample: list[float], *, confidence: float = 0.95, curve_points: int = 61
 ) -> GraphicalSummaryResult:

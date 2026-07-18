@@ -16,7 +16,7 @@ denormalised context so the dashboard renders without extra lookups.
 """
 
 import logging
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -404,7 +404,8 @@ class NCRService:
         pour = await self.session.get(Pour, ncr.pour_id)
         supplier = await self._ncr_supplier(ncr)
         grade = await self.session.get(Grade, pour.grade_id) if pour else None
-        since = date.today() - timedelta(days=_PATTERN_WINDOW_DAYS)
+        # UTC to match the timestamptz columns this window is compared against.
+        since = datetime.now(UTC).date() - timedelta(days=_PATTERN_WINDOW_DAYS)
         pid = project.project_id
 
         supplier_ncr_count = 0
