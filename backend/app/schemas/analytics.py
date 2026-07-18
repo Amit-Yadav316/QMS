@@ -134,6 +134,7 @@ class DistributionCurve(BaseModel):
     mean: float | None = None
     std_dev: float | None = None
     fck: float | None = None
+    target_mean: float | None = None  # RMC design target, else IS-10262 fck+1.65σ
     curve: list[CurvePoint] = []  # sampled bell curve
     histogram: list[StrengthBucket] = []
 

@@ -455,6 +455,10 @@ class AnalyticsService:
         grade = await self.session.get(Grade, grade_id) if grade_id else None
         if grade:
             curve.fck = float(grade.min_strength_mpa)
+            # Target mean = the RMC's stated design target, else IS-10262 fck+1.65σ.
+            curve.target_mean = await self._target_for_grade(
+                project.project_id, grade_id, float(grade.min_strength_mpa), self._sigma(observed)
+            )
         if len(observed) >= 2:
             mu, sigma = mean(observed), pstdev(observed)
             curve.mean, curve.std_dev = round(mu, 2), round(sigma, 2)

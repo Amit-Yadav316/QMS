@@ -43,8 +43,12 @@ class TestStatisticalCharts:
             headers=bearer(qe_token),
         )
         assert resp.status_code == 200, resp.text
-        assert resp.json()["sample_count"] == 1
-        assert resp.json()["fck"] == 30.0
+        body = resp.json()
+        assert body["sample_count"] == 1
+        assert body["fck"] == 30.0
+        # Target mean is surfaced (RMC design target, else IS-10262 fck+1.65σ) and
+        # sits above fck.
+        assert body["target_mean"] is not None and body["target_mean"] > 30.0
 
     async def test_graphical_summary_descriptive_report(self, client, db_session):
         # Two results on one M30 pour → the descriptive summary populates.
