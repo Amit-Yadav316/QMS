@@ -125,9 +125,10 @@ export const GraphicalSummaryPanel = forwardRef<HTMLDivElement, Props>(function 
           <div className="qms-gs-grid">
             {/* Left: the two plots */}
             <div className="qms-gs-plots">
-              <div>
+              <div className="qms-gs-plot">
                 <div className="qms-gs-plot-title">Histogram · fitted normal &amp; KDE</div>
-                <ResponsiveContainer width="100%" height={250}>
+                <div className="qms-gs-plot-body">
+                <ResponsiveContainer width="100%" height="100%" minHeight={220}>
                   <ComposedChart data={chartRows} margin={{ top: 16, right: 12, bottom: 16, left: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--gray-100)" />
                     <XAxis dataKey="x" type="number" domain={['dataMin', 'dataMax']} tick={{ fontSize: 11 }}
@@ -155,15 +156,17 @@ export const GraphicalSummaryPanel = forwardRef<HTMLDivElement, Props>(function 
                     )}
                   </ComposedChart>
                 </ResponsiveContainer>
+                </div>
                 <p className="qms-chart-hint" style={{ marginTop: 0 }}>
                   Bars = how many results fall in each strength band. The solid curve is the best-fit
                   normal; the dashed curve is the data&apos;s actual shape (kernel density).
                 </p>
               </div>
 
-              <div>
+              <div className="qms-gs-plot">
                 <div className="qms-gs-plot-title">Normal probability plot (Q–Q)</div>
-                <ResponsiveContainer width="100%" height={220}>
+                <div className="qms-gs-plot-body">
+                <ResponsiveContainer width="100%" height="100%" minHeight={200}>
                   <ScatterChart margin={{ top: 8, right: 12, bottom: 16, left: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--gray-100)" />
                     <XAxis type="number" dataKey="x" name="observed" domain={[qqLo, qqHi]} tick={{ fontSize: 11 }}
@@ -179,6 +182,7 @@ export const GraphicalSummaryPanel = forwardRef<HTMLDivElement, Props>(function 
                     <Scatter data={qq} fill="var(--blue)" isAnimationActive={false} />
                   </ScatterChart>
                 </ResponsiveContainer>
+                </div>
                 <p className="qms-chart-hint" style={{ marginTop: 0 }}>
                   Points on the diagonal ⇒ strengths follow a normal distribution.
                 </p>

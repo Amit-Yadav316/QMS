@@ -88,10 +88,11 @@
   display: grid;
   grid-template-columns: minmax(0, 2fr) minmax(220px, 1fr);
   gap: 20px;
-  align-items: start;
+  align-items: stretch;
 }
 @media (max-width: 900px) {
   .qms-gs-grid { grid-template-columns: 1fr; }
+  .qms-gs-plot-body { min-height: 220px; }
 }
 
 .qms-gs-plots {
@@ -99,6 +100,19 @@
   flex-direction: column;
   gap: 18px;
   min-width: 0;
+}
+
+/* Each plot grows to share the column height, so the two charts fill the space
+   the (usually taller) stats column takes — no dead space under the plots. */
+.qms-gs-plot {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-height: 0;
+}
+.qms-gs-plot-body {
+  flex: 1 1 auto;
+  min-height: 190px;
 }
 
 .qms-gs-plot-title {
