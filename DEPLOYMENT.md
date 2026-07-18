@@ -2,15 +2,37 @@
 
 Target stack — all **free, no credit card**:
 
-| Piece | Provider | Notes |
-|---|---|---|
-| Database | **Neon** | Serverless Postgres; doesn't expire. |
-| Backend | **Render** | Free Docker web service. Sleeps after ~15 min idle → first request cold-starts (~40s). |
-| Frontend | **Vercel** | Static SPA hosting. |
-| AI (agent + RAG) | **Google Gemini** | One AI Studio key powers chat *and* embeddings via `AI_PROVIDER=openai`. |
+| Piece | Provider | Tracks branch | Notes |
+|---|---|---|---|
+| Database | **Neon** | — | Serverless Postgres; doesn't expire. |
+| Backend | **Render** | `feat/connect-fe-be` | Free Docker web service. Sleeps after ~15 min idle → first request cold-starts (~40s). |
+| Frontend | **Vercel** | `main` | Static SPA hosting. |
+| AI (agent + RAG) | **Google Gemini** | — | One AI Studio key powers chat *and* embeddings via `AI_PROVIDER=openai`. |
 
 Deploy order: **DB → backend → frontend** (the frontend needs the backend URL; the
 backend needs the DB URL and the frontend URL for CORS).
+
+> **The two hosts track different branches — know which push deploys what.**
+>
+> - Pushing **`feat/connect-fe-be`** deploys the **backend**. `scripts/start.sh`
+>   runs `alembic upgrade head` on boot, so **that push is what applies
+>   migrations to the live Neon database** — not a merge to `main`.
+> - Pushing **`main`** deploys the **frontend** only.
+>
+> Two consequences worth holding onto:
+>
+> 1. **Schema changes go live on the `feat` push**, before any merge. Treat that
+>    push as the production migration event.
+> 2. **The two can drift.** A merge to `main` ships frontend code against
+>    whatever commit the backend last deployed from `feat`. If a change spans
+>    both, push `feat` first (backend + migration), confirm the Render deploy is
+>    green, then merge to `main`. Pointing both hosts at one branch removes this
+>    class of problem entirely — a dashboard change on each side, no code.
+>
+> This bit the project once already: a backend fix (`5778198`, the Neon
+> PgBouncer/prepared-statement fix) landed on `main` and the deployed backend
+> ran without it until the next merge, because only Vercel watches `main`. It
+> surfaced by accident during that merge, not by anyone noticing.
 
 > **Known free-tier limitations**
 > - **Uploaded PDFs are ephemeral** — Render's disk resets on restart/redeploy, so

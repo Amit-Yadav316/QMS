@@ -4,6 +4,13 @@
 #
 # The database is external (Neon) — set DATABASE_URL below to Neon's DIRECT
 # connection string. The frontend is deployed separately on Vercel.
+#
+# NOTE: this service tracks `feat/connect-fe-be`, NOT the default branch, while
+# Vercel builds the frontend from `main`. Pinned explicitly below because the
+# target otherwise lives only in the Render dashboard, where nothing in the repo
+# reveals it — which has already caused a wrong call about what a merge to main
+# would deploy. Changing `branch:` here only takes effect on a blueprint re-sync;
+# to switch an existing service, change it in the dashboard too.
 services:
   - type: web
     name: strata-backend
@@ -13,6 +20,7 @@ services:
     dockerfilePath: ./Dockerfile
     healthCheckPath: /health
     autoDeploy: true
+    branch: feat/connect-fe-be
     envVars:
       - key: ENVIRONMENT
         value: production
