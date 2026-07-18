@@ -133,7 +133,7 @@ export const GraphicalSummaryPanel = forwardRef<HTMLDivElement, Props>(function 
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--gray-100)" />
                     <XAxis dataKey="x" type="number" domain={['dataMin', 'dataMax']} tick={{ fontSize: 11 }}
                       axisLine={false} tickLine={false} tickFormatter={intTick} interval="preserveStartEnd" minTickGap={28}
-                      height={28} label={{ value: 'Strength (MPa)', position: 'insideBottom', offset: -4, fontSize: 11, fill: 'var(--gray-500)' }} />
+                      height={42} label={{ value: 'Strength (MPa)', position: 'insideBottom', fontSize: 11, fill: 'var(--gray-500)' }} />
                     <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} width={34}
                       label={{ value: 'frequency', angle: -90, position: 'insideLeft', fontSize: 11, fill: 'var(--gray-500)' }} />
                     <Tooltip
@@ -157,7 +157,7 @@ export const GraphicalSummaryPanel = forwardRef<HTMLDivElement, Props>(function 
                   </ComposedChart>
                 </ResponsiveContainer>
                 </div>
-                <p className="qms-chart-hint" style={{ marginTop: 0 }}>
+                <p className="qms-chart-hint" style={{ marginTop: 10 }}>
                   Bars = how many results fall in each strength band. The solid curve is the best-fit
                   normal; the dashed curve is the data&apos;s actual shape (kernel density).
                 </p>
@@ -170,8 +170,8 @@ export const GraphicalSummaryPanel = forwardRef<HTMLDivElement, Props>(function 
                   <ScatterChart margin={{ top: 8, right: 12, bottom: 16, left: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--gray-100)" />
                     <XAxis type="number" dataKey="x" name="observed" domain={[qqLo, qqHi]} tick={{ fontSize: 11 }}
-                      axisLine={false} tickLine={false} tickFormatter={intTick} minTickGap={28} height={28}
-                      label={{ value: 'Observed (MPa)', position: 'insideBottom', offset: -4, fontSize: 11, fill: 'var(--gray-500)' }} />
+                      axisLine={false} tickLine={false} tickFormatter={intTick} minTickGap={28} height={42}
+                      label={{ value: 'Observed (MPa)', position: 'insideBottom', fontSize: 11, fill: 'var(--gray-500)' }} />
                     <YAxis type="number" dataKey="y" name="theoretical" domain={[qqLo, qqHi]} tick={{ fontSize: 11 }}
                       axisLine={false} tickLine={false} tickFormatter={intTick} width={34}
                       label={{ value: 'expected', angle: -90, position: 'insideLeft', fontSize: 11, fill: 'var(--gray-500)' }} />
@@ -183,7 +183,7 @@ export const GraphicalSummaryPanel = forwardRef<HTMLDivElement, Props>(function 
                   </ScatterChart>
                 </ResponsiveContainer>
                 </div>
-                <p className="qms-chart-hint" style={{ marginTop: 0 }}>
+                <p className="qms-chart-hint" style={{ marginTop: 10, textAlign: 'center' }}>
                   Points on the diagonal ⇒ strengths follow a normal distribution.
                 </p>
               </div>
