@@ -153,11 +153,11 @@ export const Analytics: React.FC = () => {
 
   const handleExport = async () => {
     const sections: ChartSection[] = [];
-    if (sel.graphical && graphicalRef.current) sections.push({ title: 'Graphical summary', el: graphicalRef.current });
-    if (sel.outliers && outliersRef.current) sections.push({ title: 'Outlier scan', el: outliersRef.current });
     if (sel.run && runRef.current) sections.push({ title: 'Quality control run chart', el: runRef.current });
-    if (sel.dist && distRef.current) sections.push({ title: 'Normal distribution', el: distRef.current });
     if (sel.cusum && cusumRef.current) sections.push({ title: 'CUSUM control chart', el: cusumRef.current });
+    if (sel.outliers && outliersRef.current) sections.push({ title: 'Outlier scan', el: outliersRef.current });
+    if (sel.dist && distRef.current) sections.push({ title: 'Normal distribution', el: distRef.current });
+    if (sel.graphical && graphicalRef.current) sections.push({ title: 'Graphical summary', el: graphicalRef.current });
     if (sel.oneSample && oneSampleRef.current) sections.push({ title: 'One-sample t-test', el: oneSampleRef.current });
     if (sel.twoSample && twoSampleRef.current) sections.push({ title: 'Two-sample t-test', el: twoSampleRef.current });
     if (sections.length === 0) return;
@@ -193,11 +193,11 @@ export const Analytics: React.FC = () => {
       {/* PDF export toolbar */}
       <div className="qms-an-export">
         <span className="qms-an-export-label">Export to PDF:</span>
-        <label><input type="checkbox" checked={sel.graphical} onChange={(e) => setSel((s) => ({ ...s, graphical: e.target.checked }))} /> Graphical summary</label>
-        <label><input type="checkbox" checked={sel.outliers} onChange={(e) => setSel((s) => ({ ...s, outliers: e.target.checked }))} /> Outlier scan</label>
         <label><input type="checkbox" checked={sel.run} onChange={(e) => setSel((s) => ({ ...s, run: e.target.checked }))} /> Run chart</label>
-        <label><input type="checkbox" checked={sel.dist} onChange={(e) => setSel((s) => ({ ...s, dist: e.target.checked }))} /> Distribution</label>
         <label><input type="checkbox" checked={sel.cusum} onChange={(e) => setSel((s) => ({ ...s, cusum: e.target.checked }))} /> CUSUM</label>
+        <label><input type="checkbox" checked={sel.outliers} onChange={(e) => setSel((s) => ({ ...s, outliers: e.target.checked }))} /> Outlier scan</label>
+        <label><input type="checkbox" checked={sel.dist} onChange={(e) => setSel((s) => ({ ...s, dist: e.target.checked }))} /> Distribution</label>
+        <label><input type="checkbox" checked={sel.graphical} onChange={(e) => setSel((s) => ({ ...s, graphical: e.target.checked }))} /> Graphical summary</label>
         <label><input type="checkbox" checked={sel.oneSample} onChange={(e) => setSel((s) => ({ ...s, oneSample: e.target.checked }))} /> One-sample t-test</label>
         <label><input type="checkbox" checked={sel.twoSample} onChange={(e) => setSel((s) => ({ ...s, twoSample: e.target.checked }))} /> Two-sample t-test</label>
         <Button size="sm" variant="outline" icon={<Download size={14} />} onClick={handleExport} disabled={exporting}>
@@ -205,32 +205,7 @@ export const Analytics: React.FC = () => {
         </Button>
       </div>
 
-      {/* 1 · Graphical summary (Minitab-style descriptive report) */}
-      <GraphicalSummaryPanel
-        ref={graphicalRef}
-        pid={pid}
-        gradeOpts={gradeOpts}
-        towerOpts={towerOpts}
-        contractorOpts={contractorOpts}
-        firstGrade={firstGrade}
-        firstTower={firstTower}
-        tid={tid}
-        clause={<ClauseTag pid={pid} clause="graphical" documents={documents} />}
-      />
-
-      {/* 2 · Outlier scan (modified Thompson τ) */}
-      <OutliersPanel
-        ref={outliersRef}
-        pid={pid}
-        gradeOpts={gradeOpts}
-        towerOpts={towerOpts}
-        contractorOpts={contractorOpts}
-        firstGrade={firstGrade}
-        firstTower={firstTower}
-        tid={tid}
-      />
-
-      {/* 3 · Quality control run chart */}
+      {/* 1 · Quality control run chart */}
       <div ref={runRef}>
         <Card>
           <h3 className="qms-chart-heading">Quality control run chart</h3>
@@ -264,38 +239,7 @@ export const Analytics: React.FC = () => {
         </Card>
       </div>
 
-      {/* 2 · Normal distribution curve */}
-      <div ref={distRef}>
-        <Card>
-          <h3 className="qms-chart-heading">Normal distribution {dist?.mean != null ? `(X̄ ${dist.mean}, S ${dist.std_dev}, n ${dist.sample_count})` : ''}</h3>
-          <div className="qms-clause-block"><ClauseTag pid={pid} clause="distribution" documents={documents} /></div>
-          <div style={filterRow}>
-            <Select label="Grade" fullWidth={false} value={distGrade} onChange={(e) => setDG(e.target.value)} options={gradeOpts} />
-            <Select label="Tower" fullWidth={false} value={distTower} onChange={(e) => setDT(e.target.value)} options={towerOpts} />
-            {contractorOpts.length > 0 && (
-              <Select label="Contractor" fullWidth={false} value={dC} onChange={(e) => setDC(e.target.value)}
-                options={[{ label: 'All contractors', value: 'ALL' }, ...contractorOpts]} />
-            )}
-          </div>
-          {(dist?.curve.length ?? 0) === 0 ? (
-            <p className="text-muted" style={{ fontSize: 14, margin: 0 }}>Need at least two results to draw the curve.</p>
-          ) : (
-            <ResponsiveContainer width="100%" height={220}>
-              <ComposedChart data={dist!.curve}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--gray-100)" />
-                <XAxis dataKey="x" type="number" domain={['dataMin', 'dataMax']} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} unit=" MPa" />
-                <YAxis tick={false} axisLine={false} tickLine={false} width={8} />
-                <Tooltip formatter={(v) => Number(v).toFixed(4)} labelFormatter={(x) => `${x} MPa`} />
-                <Area type="monotone" dataKey="y" stroke="var(--blue)" fill="var(--blue)" fillOpacity={0.12} strokeWidth={2} />
-                {dist?.fck != null && <ReferenceLine x={dist.fck} stroke="var(--red)" strokeDasharray="4 4" label={{ value: `fck ${dist.fck}`, fontSize: 11, fill: 'var(--red)' }} />}
-                {dist?.mean != null && <ReferenceLine x={dist.mean} stroke="var(--green)" strokeDasharray="4 4" label={{ value: 'X̄', fontSize: 11, fill: 'var(--green)' }} />}
-              </ComposedChart>
-            </ResponsiveContainer>
-          )}
-        </Card>
-      </div>
-
-      {/* 3 · CUSUM control chart */}
+      {/* 2 · CUSUM control chart */}
       <div ref={cusumRef}>
         <Card>
           <h3 className="qms-chart-heading">CUSUM control chart {cusum?.target_mean != null ? `(target mean ${cusum.target_mean} MPa)` : ''}</h3>
@@ -330,7 +274,63 @@ export const Analytics: React.FC = () => {
         </Card>
       </div>
 
-      {/* 4 · Statistical tests (Student's t) */}
+      {/* 3 · Outlier scan (modified Thompson τ) */}
+      <OutliersPanel
+        ref={outliersRef}
+        pid={pid}
+        gradeOpts={gradeOpts}
+        towerOpts={towerOpts}
+        contractorOpts={contractorOpts}
+        firstGrade={firstGrade}
+        firstTower={firstTower}
+        tid={tid}
+      />
+
+      {/* 4 · Normal distribution curve */}
+      <div ref={distRef}>
+        <Card>
+          <h3 className="qms-chart-heading">Normal distribution {dist?.mean != null ? `(X̄ ${dist.mean}, S ${dist.std_dev}, n ${dist.sample_count})` : ''}</h3>
+          <div className="qms-clause-block"><ClauseTag pid={pid} clause="distribution" documents={documents} /></div>
+          <div style={filterRow}>
+            <Select label="Grade" fullWidth={false} value={distGrade} onChange={(e) => setDG(e.target.value)} options={gradeOpts} />
+            <Select label="Tower" fullWidth={false} value={distTower} onChange={(e) => setDT(e.target.value)} options={towerOpts} />
+            {contractorOpts.length > 0 && (
+              <Select label="Contractor" fullWidth={false} value={dC} onChange={(e) => setDC(e.target.value)}
+                options={[{ label: 'All contractors', value: 'ALL' }, ...contractorOpts]} />
+            )}
+          </div>
+          {(dist?.curve.length ?? 0) === 0 ? (
+            <p className="text-muted" style={{ fontSize: 14, margin: 0 }}>Need at least two results to draw the curve.</p>
+          ) : (
+            <ResponsiveContainer width="100%" height={220}>
+              <ComposedChart data={dist!.curve}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--gray-100)" />
+                <XAxis dataKey="x" type="number" domain={['dataMin', 'dataMax']} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} unit=" MPa" />
+                <YAxis tick={false} axisLine={false} tickLine={false} width={8} />
+                <Tooltip formatter={(v) => Number(v).toFixed(4)} labelFormatter={(x) => `${x} MPa`} />
+                <Area type="monotone" dataKey="y" stroke="var(--blue)" fill="var(--blue)" fillOpacity={0.12} strokeWidth={2} />
+                {dist?.fck != null && <ReferenceLine x={dist.fck} stroke="var(--red)" strokeDasharray="4 4" label={{ value: `fck ${dist.fck}`, fontSize: 11, fill: 'var(--red)' }} />}
+                {dist?.mean != null && <ReferenceLine x={dist.mean} stroke="var(--green)" strokeDasharray="4 4" label={{ value: 'X̄', fontSize: 11, fill: 'var(--green)' }} />}
+              </ComposedChart>
+            </ResponsiveContainer>
+          )}
+        </Card>
+      </div>
+
+      {/* 5 · Graphical summary (Minitab-style descriptive report) */}
+      <GraphicalSummaryPanel
+        ref={graphicalRef}
+        pid={pid}
+        gradeOpts={gradeOpts}
+        towerOpts={towerOpts}
+        contractorOpts={contractorOpts}
+        firstGrade={firstGrade}
+        firstTower={firstTower}
+        tid={tid}
+        clause={<ClauseTag pid={pid} clause="graphical" documents={documents} />}
+      />
+
+      {/* 6 · Statistical tests (Student's t) */}
       <div className="qms-clause-block">
         <ClauseTag pid={pid} clause="ttest" documents={documents} />
       </div>
