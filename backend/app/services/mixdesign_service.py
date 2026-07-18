@@ -315,6 +315,11 @@ class MixDesignService:
         supplier = res.scalar_one_or_none()
         if not supplier:
             raise NotFoundError("Mix design submission")
+        # Blocking previously gated only the authenticated side, so a blocked RMC
+        # kept submitting through the token it already held — overwriting its
+        # existing mix designs and resetting the QE's review to PENDING.
+        if supplier.is_blocked:
+            raise EntityBlockedError("supplier", supplier.block_reason)
         return supplier
 
     async def _required_grade_ids(self, supplier_id: int) -> set[int]:

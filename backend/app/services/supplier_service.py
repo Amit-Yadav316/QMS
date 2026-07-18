@@ -16,11 +16,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.core.email import send_rmc_issue_email, send_supplier_confirmation_email
 from app.core.exceptions import (
+    AmbiguousContractorError,
+    ConfirmationExpiredError,
+    EntityBlockedError,
     NoAcceptedContractorError,
     NotFoundError,
     PermissionDeniedError,
     TruckStateError,
 )
+from app.core.external_tokens import confirmation_expiry, is_expired
 from app.core.fallback_log import fallback_detail
 from app.core.project_access import contractor_org_ids
 from app.core.security import create_invitation_token
@@ -104,7 +108,17 @@ class SupplierService:
             )
             if not contractors:
                 raise NoAcceptedContractorError()
-            contractor_org_id = sorted(contractors)[0]
+            # Which contractor holds this must be stated when there's a choice.
+            # Defaulting to sorted(...)[0] silently attached it to whichever org
+            # happened to sort first.
+            if data.contractor_org_id is not None:
+                if data.contractor_org_id not in contractors:
+                    raise NotFoundError("Contractor")
+                contractor_org_id = data.contractor_org_id
+            elif len(contractors) > 1:
+                raise AmbiguousContractorError()
+            else:
+                contractor_org_id = next(iter(contractors))
             registered_by, approval_status = "CLIENT", "PENDING"
         else:
             contractor_org_id = user.org_id
@@ -120,7 +134,8 @@ class SupplierService:
             status="PENDING",
             confirmation_token=token,
             confirmation_sent_at=sent_at,
-            **data.model_dump(),
+            confirmation_token_expires_at=confirmation_expiry(),
+            **data.model_dump(exclude={"contractor_org_id"}),
         )
         supplier = await self.repo.add(supplier)
 
@@ -186,6 +201,9 @@ class SupplierService:
         if not supplier.confirmation_token:
             supplier.confirmation_token = create_invitation_token()
         supplier.confirmation_sent_at = datetime.now(UTC)
+        # A resend restarts the window — otherwise the new email could arrive
+        # already expired.
+        supplier.confirmation_token_expires_at = confirmation_expiry()
         await self.session.flush()
         await self.session.refresh(supplier)
 
@@ -239,6 +257,14 @@ class SupplierService:
         supplier.block_reason = reason if blocked else None
         supplier.blocked_by = user.user_id if blocked else None
         supplier.blocked_at = datetime.now(UTC) if blocked else None
+        if blocked:
+            # Revoke the outstanding links. Blocking only gated the authenticated
+            # side, so a blocked RMC could still confirm details and submit mix
+            # designs through tokens it already held. Unblocking doesn't restore
+            # them — the contractor resends, which mints fresh ones.
+            supplier.confirmation_token = None
+            supplier.confirmation_token_expires_at = None
+            supplier.mix_submission_token = None
         await self.session.flush()
         return await self._to_response(supplier)
 
@@ -310,6 +336,10 @@ class SupplierService:
             supplier.confirmed_at = datetime.now(UTC)
             message = "Thanks — your details are confirmed."
 
+        # Single use: the link is done once acted on. Leaving it live let anyone
+        # who ever saw the email replay it later to rewrite contact_email.
+        supplier.confirmation_token = None
+        supplier.confirmation_token_expires_at = None
         await self.session.flush()
         return ConfirmationResult(status=supplier.status, message=message)
 
@@ -317,4 +347,10 @@ class SupplierService:
         supplier = await self.repo.get_by(Supplier.confirmation_token == token)
         if not supplier:
             raise NotFoundError("Confirmation")
+        if is_expired(supplier.confirmation_token_expires_at):
+            raise ConfirmationExpiredError()
+        # A blocked supplier keeps whatever links it was sent; honouring them
+        # would let the party you just distrusted keep writing to the project.
+        if supplier.is_blocked:
+            raise EntityBlockedError("supplier", supplier.block_reason)
         return supplier
