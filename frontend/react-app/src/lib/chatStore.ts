@@ -21,7 +21,10 @@ interface ChatEnvelope {
 }
 
 const TTL_MS = 24 * 60 * 60 * 1000;
-const keyFor = (pid: number) => `qms-chat-${pid}`;
+// Exported so the session teardown in tokenStorage can purge every transcript
+// without re-hardcoding the prefix.
+export const CHAT_KEY_PREFIX = 'qms-chat-';
+const keyFor = (pid: number) => `${CHAT_KEY_PREFIX}${pid}`;
 
 // Returns the stored messages if the entry exists and is younger than 24h,
 // otherwise null (and prunes an expired entry).
