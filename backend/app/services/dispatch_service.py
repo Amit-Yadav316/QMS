@@ -30,6 +30,7 @@ from app.core.exceptions import (
     PermissionDeniedError,
     TruckStateError,
 )
+from app.core.fallback_log import fallback_detail
 from app.core.security import create_invitation_token
 from app.models.auth import User
 from app.models.master import Grade, MixApprovalStatus, MixDesign, Project, Supplier
@@ -77,7 +78,9 @@ async def _try_send(send, *, link: str, recipient: str, **kwargs) -> None:
     try:
         await send(**kwargs)
     except Exception as exc:  # noqa: BLE001 — best-effort email
-        logger.warning("Email to %s failed (%s). Link: %s", recipient, exc, link)
+        logger.warning(
+            "Email to %s failed (%s). Link: %s", recipient, exc, fallback_detail(link)
+        )
 
 
 class DispatchService:
@@ -110,7 +113,7 @@ class DispatchService:
             raise NotFoundError("Grade")
         # Only a grade with an approved mix design on the project may be
         # dispatched — the mix is the contract for what gets batched.
-        await self._ensure_grade_has_approved_mix(data.grade_id, pid)
+        await self._ensure_grade_has_approved_mix(data.grade_id, pid, data.supplier_id)
 
         dispatch = await self.repo.add(
             RMCDispatch(
@@ -150,13 +153,22 @@ class DispatchService:
         return await self._dispatch_response(dispatch, pour_id=None, truck=truck)
 
     async def _ensure_grade_has_approved_mix(
-        self, grade_id: int, project_id: int
+        self, grade_id: int, project_id: int, supplier_id: int
     ) -> None:
+        """The dispatched supplier must itself hold the approved mix.
+
+        Bound to the supplier, not just the grade: checking the grade alone let
+        supplier B be dispatched on the strength of supplier A's approved mix.
+        `_target_slump` then looked up supplier+grade, found nothing, and
+        `_grade_slump` treated "no target" as PASS — so the QE's mandatory
+        in-situ slump gate silently accepted any measurement.
+        """
         res = await self.session.execute(
             select(MixDesign.mix_design_id)
             .where(
                 MixDesign.project_id == project_id,
                 MixDesign.grade_id == grade_id,
+                MixDesign.supplier_id == supplier_id,
                 MixDesign.approval_status == MixApprovalStatus.APPROVED,
             )
             .limit(1)
@@ -371,7 +383,15 @@ class DispatchService:
             dispatch.volume_received_cum = received
             ordered = dispatch.volume_ordered_cum or 0
             dispatch.volume_remaining_cum = max(ordered - received, 0)
-            dispatch.is_complete = received >= ordered
+            # Both volumes are nullable, so the old `received >= ordered` read
+            # 0 >= 0 as "complete" and closed out a load nobody measured. A
+            # dispatch is only complete when a real delivered volume meets a
+            # real ordered volume.
+            dispatch.is_complete = (
+                truck.volume_cum is not None
+                and dispatch.volume_ordered_cum is not None
+                and float(received) >= float(ordered)
+            )
             await self.session.flush()
             await self._notify_result(project, dispatch, truck, "ACCEPTED")
         else:
@@ -450,6 +470,7 @@ class DispatchService:
         res = await self.session.execute(
             select(MixDesign.slump_range_mm)
             .where(
+                MixDesign.project_id == dispatch.project_id,
                 MixDesign.supplier_id == dispatch.supplier_id,
                 MixDesign.grade_id == dispatch.grade_id,
                 MixDesign.approval_status == MixApprovalStatus.APPROVED,
