@@ -20,44 +20,33 @@ cleanup debt and deliberately-deferred work. Keep it current as you go.
       Extract reusable pieces into `src/components/` (which is currently nearly
       empty).
 
-## Security — open findings (from the 2026-07-18 whole-codebase audit)
+## Security — audit of 2026-07-18 (all findings fixed)
 
-Fixed in that pass: cross-tenant user enumeration via corrective-action
-`assigned_to`; unscoped retest `lab_id`/`report_document_id`; logout not revoking
-the refresh token; offboarded users still able to refresh; the fail-open wipe
-guard; unbounded pre-auth request bodies; credentials in production logs; the
-in-situ slump gate bypass; the RAG embedding cache-key mismatch. Still open:
+A whole-codebase audit (backend security, backend correctness, frontend) found
+26 issues; all are fixed. For the record, the ones with lasting design impact:
 
-- [ ] **Supplier/lab confirmation tokens never expire or get invalidated.**
-      `Supplier.confirmation_token` / `TestingLab.confirmation_token` have no
-      `expires_at` (unlike `TruckDispatch`, which does it correctly), are not
-      cleared after use, and survive a DECLINE. The endpoint can also rewrite
-      `contact_email` — the sink for every later dispatch / report / mix link.
-      Needs a migration + null-on-use.
-- [ ] **Blocking a supplier/lab doesn't revoke its tokens.** A blocked RMC keeps
-      submitting mix designs; a blocked lab keeps writing cube results. Re-check
-      `is_blocked` inside the token lookups and null the tokens on block.
-- [ ] **No rate limiting on `/auth/login`.** OTP attempts are capped and resend
-      is throttled, but password login has no attempt counter or lockout. See
-      also the IP-based item below.
-- [ ] **Register returns 409 "Email already exists"** — an unauthenticated
-      account-existence oracle. `resend_otp` already avoids this; mirror it.
-      `login` also short-circuits before `verify_password`, giving a timing
-      signal.
-- [ ] **Model/migration drift.** `auth.email_otps.created_at` and
-      `auth.project_members.assigned_at` are NOT NULL on the models but nullable
-      in the migrations; 4 unique indexes differ in name (`*_key` vs `uq_*`),
-      which makes `--autogenerate` propose spurious drops. Needs one migration.
-- [ ] **Strength histogram buckets are hardcoded to start at 35 MPa**
-      (`analytics_service._BUCKET_ORDER`), so an M25/M30 project collapses to a
-      single `<35` bar. A test currently asserts the broken behaviour.
-- [ ] **`qe_inbox` is an unbounded N+1** — loads every dispatch on the project,
-      runs ~5 queries each, then discards all but `PENDING_QE`.
-- [ ] **Frontend:** the RMC notice in `NCRDetailPanel` re-seeds from `ncr` on
-      every detail refetch, so edited text silently reverts mid-edit and the
-      wrong body can be emailed; a 403 deactivation never forces logout; a retried
-      401 leaves the session stuck; `ProjectDispatches` copy-link has no
-      try/catch; AI-suggestion auto-generate re-fires on every expand.
+- Confirmation tokens for suppliers/labs now **expire and are single-use**
+  (`app/core/external_tokens.py`, migration `a1c3e5f7b9d2`). They previously
+  never expired and survived use, so a forwarded email could be replayed to
+  rewrite `contact_email` — the sink for every later dispatch/mix/report link.
+- **Blocking an entity revokes its tokens.** Block only gated the authenticated
+  side, so a blocked RMC kept submitting mix designs and a blocked lab kept
+  writing cube results. Per-sample lab report tokens are refused in
+  `CubeService` since they live on the sample, not the lab.
+- **Login has an attempt cap + lockout** (`users.failed_login_attempts` /
+  `locked_until`), and always runs a bcrypt verify so a missing account can't be
+  distinguished by timing. `_register_failed_login` is the **second documented
+  exception** to the flush-only rule — it must commit or `get_db` rolls the
+  counter back.
+- **Register no longer reveals whether an address has an account** — identical
+  201 either way, with an out-of-band "you already have an account" email.
+- The **in-situ slump gate could be bypassed entirely** when a dispatch's
+  supplier differed from the one holding the approved mix.
+- The **RAG embedding cache** was stamped with the wrong model name, so a
+  provider switch silently grounded the LLM in arbitrary NCRs.
+- **Logout now revokes the refresh token**, and the frontend clears the React
+  Query cache + chat transcripts (a shared site tablet leaked the previous
+  user's data to the next one).
 
 ## Deferred (needs infra, a decision, or an external dependency)
 
@@ -70,10 +59,11 @@ in-situ slump gate bypass; the RAG embedding cache-key mismatch. Still open:
       the lab. `send_lab_report_request_email(..., is_reminder=True)` already exists;
       only the scheduling layer is missing.
 
-- [ ] **Register/resend rate-limiting by IP.** OTP brute-force cap + 60s resend
-      cooldown are done; bombing via *varying* emails still needs request-level
-      (IP) throttling middleware (e.g. slowapi/Redis). Out of scope for a code
-      fix — pick the mechanism first.
+- [ ] **Register/resend rate-limiting by IP.** Per-account limits are all done
+      (OTP brute-force cap, 60s resend cooldown, login attempt cap + lockout).
+      What's left is genuinely infra: bombing via *varying* emails needs
+      request-level (IP) throttling middleware (e.g. slowapi/Redis), which a
+      per-account counter can't cover. Pick the mechanism first.
 - [ ] **Swap RAG retrieval to pgvector when available.** Phase 9 is pgvector-free
       (float[] + Python cosine) behind a swappable seam because pgvector isn't
       installed in Postgres. When it is, move similarity into the DB — localized to

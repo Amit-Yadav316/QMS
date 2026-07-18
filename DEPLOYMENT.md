@@ -142,5 +142,7 @@ UV_LINK_MODE=copy DATABASE_URL='postgresql://…neon…/neondb?sslmode=require' 
   without breaking a differently-hosted backend. Worth adding once the backend
   host is stable — the refresh token lives in `localStorage` for 7 days, so a CSP
   is the main thing blunting a future XSS.
-- **Rate limiting** — `/auth/login` has no attempt cap or lockout (the OTP paths
-  do). Needs middleware; see TASKS.md.
+- **IP-based rate limiting** — per-account limits are in place (`/auth/login`
+  locks after repeated failures, OTP attempts are capped, resend is throttled),
+  but there is no request-level throttle, so a flood across *many* addresses is
+  still unbounded. Needs middleware; see TASKS.md.
