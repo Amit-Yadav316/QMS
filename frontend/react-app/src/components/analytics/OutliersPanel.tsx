@@ -12,6 +12,8 @@ import {
 } from 'recharts';
 import { Card } from '../ui/Card';
 import { Select } from '../ui/Select';
+import { DateRangeFilter } from './DateRangeFilter';
+import { presetRange, type DatePreset } from './dateRange';
 import { useOutliers } from '../../queries/analytics';
 
 type Opt = { label: string; value: string | number };
@@ -40,12 +42,17 @@ export const OutliersPanel = forwardRef<HTMLDivElement, Props>(function Outliers
   const [g, setG] = useState('');
   const [t, setT] = useState('');
   const [c, setC] = useState('ALL');
+  const [preset, setPreset] = useState<DatePreset>('all');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
   const grade = g || firstGrade;
   const tower = t || firstTower;
+  const range = presetRange(preset, from, to);
 
   const { data } = useOutliers(pid, {
     grade_id: num(grade), tower_id: tid(tower),
     contractor_id: c !== 'ALL' ? Number(c) : undefined,
+    date_from: range.date_from, date_to: range.date_to,
   });
 
   const points = data?.points ?? [];
@@ -76,6 +83,7 @@ export const OutliersPanel = forwardRef<HTMLDivElement, Props>(function Outliers
             <Select label="Contractor" fullWidth={false} value={c} onChange={(e) => setC(e.target.value)}
               options={[{ label: 'All contractors', value: 'ALL' }, ...contractorOpts]} />
           )}
+          <DateRangeFilter preset={preset} from={from} to={to} onPreset={setPreset} onFrom={setFrom} onTo={setTo} />
         </div>
 
         {!testable ? (

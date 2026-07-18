@@ -12,6 +12,8 @@ import {
 } from 'recharts';
 import { Card } from '../ui/Card';
 import { Select } from '../ui/Select';
+import { DateRangeFilter } from './DateRangeFilter';
+import { presetRange, type DatePreset } from './dateRange';
 import { useGraphicalSummary } from '../../queries/analytics';
 
 type Opt = { label: string; value: string | number };
@@ -44,12 +46,17 @@ export const GraphicalSummaryPanel = forwardRef<HTMLDivElement, Props>(function 
   const [t, setT] = useState('');
   const [c, setC] = useState('ALL');
   const [conf, setConf] = useState('0.95'); // CI confidence level
+  const [preset, setPreset] = useState<DatePreset>('all');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
   const grade = g || firstGrade;
   const tower = t || firstTower;
+  const range = presetRange(preset, from, to);
 
   const { data } = useGraphicalSummary(pid, {
     grade_id: num(grade), tower_id: tid(tower),
     contractor_id: c !== 'ALL' ? Number(c) : undefined,
+    date_from: range.date_from, date_to: range.date_to,
   }, Number(conf));
 
   const hasStats = data != null && data.mean != null && data.histogram.length > 0;
@@ -99,6 +106,7 @@ export const GraphicalSummaryPanel = forwardRef<HTMLDivElement, Props>(function 
               { label: '99%', value: '0.99' },
               { label: '99.9%', value: '0.999' },
             ]} />
+          <DateRangeFilter preset={preset} from={from} to={to} onPreset={setPreset} onFrom={setFrom} onTo={setTo} />
         </div>
 
         {!hasStats ? (
