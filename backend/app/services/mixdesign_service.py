@@ -25,6 +25,7 @@ from app.core.exceptions import (
     PermissionDeniedError,
     UnsupportedFileTypeError,
 )
+from app.core.fallback_log import fallback_detail
 from app.core.security import create_invitation_token
 from app.core.storage import make_key, storage
 from app.models.auth import User
@@ -65,7 +66,7 @@ async def _try_send_mix_request(**kwargs) -> None:
             "Mix-design request email to %s failed (%s). Link: %s",
             kwargs.get("supplier_email"),
             exc,
-            link,
+            fallback_detail(link),
         )
 
 

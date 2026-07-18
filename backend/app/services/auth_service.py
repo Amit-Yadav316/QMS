@@ -22,6 +22,7 @@ from app.core.exceptions import (
     NotFoundError,
     PermissionDeniedError,
 )
+from app.core.fallback_log import fallback_detail
 from app.core.security import (
     create_access_token,
     create_invitation_token,
@@ -82,7 +83,7 @@ async def _try_send_invitation_email(**kwargs) -> None:
             "Invitation email to %s failed (%s). Accept link: %s",
             invited_email,
             exc,
-            accept_url,
+            fallback_detail(accept_url),
         )
 
 
@@ -94,7 +95,12 @@ async def _try_send_otp_email(email: str, code: str, full_name: str | None) -> N
     try:
         await send_otp_email(email=email, code=code, full_name=full_name)
     except Exception as exc:  # noqa: BLE001 — best-effort email, must not 500
-        logger.warning("OTP email to %s failed (%s). Code: %s", email, exc, code)
+        logger.warning(
+            "OTP email to %s failed (%s). Code: %s",
+            email,
+            exc,
+            fallback_detail(code),
+        )
 
 
 class AuthService:
@@ -167,7 +173,10 @@ class AuthService:
             raise InvalidTokenError()
 
         user = await self.repo.get_user_by_id(token_data.user_id)
-        if not user or not user.is_active:
+        # is_offboarded is checked here too, not just in get_current_user: an
+        # offboarded user must not be able to keep minting access tokens for the
+        # refresh token's remaining lifetime. Mirrors login/verify_otp.
+        if not user or not user.is_active or user.is_offboarded:
             raise InvalidTokenError()
 
         access_token, _ = create_access_token(
@@ -180,16 +189,37 @@ class AuthService:
 
     # ── Logout ───────────────────────────────────────────────────────────────
 
-    async def logout(self, access_jti: str, user_id: int) -> None:
-        """Blacklists the access token JTI."""
-        expires_at = datetime.now(UTC) + timedelta(
-            minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
-        )
+    async def logout(
+        self, access_jti: str, user_id: int, refresh_token: str | None = None
+    ) -> None:
+        """Blacklists the access token JTI, and the refresh token's if supplied.
+
+        Blacklisting only the access token would leave logout cosmetic: the
+        refresh token outlives it by days and can mint fresh access tokens the
+        whole time. The refresh token is only honoured when it actually belongs
+        to the caller, so this can't be used to revoke someone else's session.
+        """
         await self.repo.blacklist_token(
             jti=access_jti,
             user_id=user_id,
-            expires_at=expires_at,
+            expires_at=datetime.now(UTC)
+            + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
         )
+
+        if not refresh_token:
+            return
+        token_data = decode_token(refresh_token)
+        if (
+            token_data
+            and token_data.token_type == "refresh"
+            and token_data.user_id == user_id
+        ):
+            await self.repo.blacklist_token(
+                jti=token_data.jti,
+                user_id=user_id,
+                expires_at=datetime.now(UTC)
+                + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
+            )
 
     # ── Invitation flow ──────────────────────────────────────────────────────
 

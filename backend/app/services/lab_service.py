@@ -20,6 +20,7 @@ from app.core.exceptions import (
     PermissionDeniedError,
     TruckStateError,
 )
+from app.core.fallback_log import fallback_detail
 from app.core.project_access import contractor_org_ids
 from app.core.security import create_invitation_token
 from app.models.auth import User, UserRole
@@ -50,7 +51,7 @@ async def _try_send_lab_confirmation(**kwargs) -> None:
             "Lab confirmation email to %s failed (%s). Link: %s",
             kwargs.get("lab_email"),
             exc,
-            link,
+            fallback_detail(link),
         )
 
 

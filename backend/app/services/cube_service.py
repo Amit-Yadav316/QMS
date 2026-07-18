@@ -32,6 +32,7 @@ from app.core.exceptions import (
     NotFoundError,
     UnsupportedFileTypeError,
 )
+from app.core.fallback_log import fallback_detail
 from app.core.security import create_invitation_token
 from app.core.storage import make_key, storage
 from app.models.auth import User
@@ -404,7 +405,7 @@ class CubeService:
             link = f"{settings.FRONTEND_URL}/external/lab-report?token={sample.report_token}"
             logger.warning(
                 "Lab report email to %s failed (%s). Link: %s",
-                lab.contact_email, exc, link,
+                lab.contact_email, exc, fallback_detail(link),
             )
         return True
 

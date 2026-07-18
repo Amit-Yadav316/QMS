@@ -27,6 +27,7 @@ from app.core.exceptions import (
     NotFoundError,
     PermissionDeniedError,
 )
+from app.core.project_access import get_membership
 from app.core.storage import storage
 from app.models.auth import User
 from app.models.master import (
@@ -198,7 +199,7 @@ class NCRService:
     ) -> CorrectiveActionResponse:
         ncr = await self._require(project, ncr_id)
         self._ensure_mutable(ncr)
-        await self._validate_user(data.assigned_to)
+        await self._validate_user(project, data.assigned_to)
         action = await self.actions.add(
             CorrectiveAction(
                 ncr_id=ncr.ncr_id,
@@ -226,7 +227,7 @@ class NCRService:
         if data.action_description is not None:
             action.action_description = data.action_description
         if data.assigned_to is not None:
-            await self._validate_user(data.assigned_to)
+            await self._validate_user(project, data.assigned_to)
             action.assigned_to = data.assigned_to
         if data.due_date is not None:
             action.due_date = data.due_date
@@ -278,9 +279,18 @@ class NCRService:
             retest.observed_strength_mpa = data.observed_strength_mpa
         if data.required_strength_mpa is not None:
             retest.required_strength_mpa = data.required_strength_mpa
+        # Both ids are caller-supplied and get echoed back resolved (lab_name),
+        # so they must be confirmed in-project — otherwise they enumerate other
+        # tenants' labs and leave dangling cross-project document references.
         if data.lab_id is not None:
+            lab = await self.session.get(TestingLab, data.lab_id)
+            if not lab or lab.project_id != project.project_id:
+                raise NotFoundError("Lab")
             retest.lab_id = data.lab_id
         if data.report_document_id is not None:
+            doc = await self.session.get(Document, data.report_document_id)
+            if not doc or doc.project_id != project.project_id:
+                raise NotFoundError("Document")
             retest.report_document_id = data.report_document_id
         if data.notes is not None:
             retest.notes = data.notes
@@ -464,10 +474,16 @@ class NCRService:
         if ncr.status == NCRStatus.CLOSED:
             raise NCRStateError("Reopen this NCR before modifying it")
 
-    async def _validate_user(self, user_id: int | None) -> None:
+    async def _validate_user(self, project: Project, user_id: int | None) -> None:
+        """A corrective action may only be assigned to a member of this project.
+
+        Scoped to the project on purpose: a bare ``session.get(User, id)`` would
+        accept any user id in any organisation, turning the assignment field into
+        a cross-tenant existence probe (the response echoes the assignee's name).
+        """
         if user_id is None:
             return
-        if not await self.session.get(User, user_id):
+        if not await get_membership(self.session, project.project_id, user_id):
             raise NotFoundError("User")
 
     async def _user_name(self, user_id: int | None) -> str | None:

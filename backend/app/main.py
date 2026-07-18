@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
+from app.core.body_limit import BodySizeLimitMiddleware
 from app.routers import (
     ai_suggestions,
     alerts,
@@ -36,6 +37,12 @@ def create_app() -> FastAPI:
         docs_url="/docs",
         redoc_url="/redoc",
         openapi_url="/openapi.json" if not settings.is_production else None,
+    )
+
+    # Cap request bodies before they are buffered. Must sit outside CORS so an
+    # oversized body is refused as early as possible.
+    app.add_middleware(
+        BodySizeLimitMiddleware, max_bytes=settings.MAX_UPLOAD_BYTES
     )
 
     # CORS — allow frontend dev server.
