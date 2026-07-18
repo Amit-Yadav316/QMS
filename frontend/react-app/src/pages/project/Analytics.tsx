@@ -104,7 +104,11 @@ export const Analytics: React.FC = () => {
   const [rPreset, setRPreset] = useState<DatePreset>('7');
   const [rFrom, setRFrom] = useState(''); const [rTo, setRTo] = useState('');
   const [dG, setDG] = useState(''); const [dT, setDT] = useState(''); const [dC, setDC] = useState('ALL');
+  const [dPreset, setDPreset] = useState<DatePreset>('7');
+  const [dFrom, setDFrom] = useState(''); const [dTo, setDTo] = useState('');
   const [uG, setUG] = useState(''); const [uT, setUT] = useState(''); const [uC, setUC] = useState('ALL');
+  const [uPreset, setUPreset] = useState<DatePreset>('7');
+  const [uFrom, setUFrom] = useState(''); const [uTo, setUTo] = useState('');
 
   const runGrade = rG || firstGrade;
   const runTower = rT || firstTower;
@@ -113,6 +117,8 @@ export const Analytics: React.FC = () => {
   const cusumGrade = uG || firstGrade;
   const cusumTower = uT || firstTower;
   const runRange = presetRange(rPreset, rFrom, rTo);
+  const distRange = presetRange(dPreset, dFrom, dTo);
+  const cusumRange = presetRange(uPreset, uFrom, uTo);
 
   const { data: run } = useRunChart(pid, {
     grade_id: n(runGrade), tower_id: tid(runTower),
@@ -122,10 +128,12 @@ export const Analytics: React.FC = () => {
   const { data: dist } = useDistribution(pid, {
     grade_id: n(distGrade), tower_id: tid(distTower),
     contractor_id: dC !== 'ALL' ? Number(dC) : undefined,
+    date_from: distRange.date_from, date_to: distRange.date_to,
   });
   const { data: cusum } = useCusum(pid, {
     grade_id: n(cusumGrade), tower_id: tid(cusumTower),
     contractor_id: uC !== 'ALL' ? Number(uC) : undefined,
+    date_from: cusumRange.date_from, date_to: cusumRange.date_to,
   });
 
   const runData = (run?.points ?? []).map((p, i) => ({ ...p, idx: i + 1 }));
@@ -252,6 +260,7 @@ export const Analytics: React.FC = () => {
               <Select label="Contractor" fullWidth={false} value={uC} onChange={(e) => setUC(e.target.value)}
                 options={[{ label: 'All contractors', value: 'ALL' }, ...contractorOpts]} />
             )}
+            <DateRangeFilter preset={uPreset} from={uFrom} to={uTo} onPreset={setUPreset} onFrom={setUFrom} onTo={setUTo} />
           </div>
           {cusumData.length === 0 ? empty : (
             <>
@@ -298,6 +307,7 @@ export const Analytics: React.FC = () => {
               <Select label="Contractor" fullWidth={false} value={dC} onChange={(e) => setDC(e.target.value)}
                 options={[{ label: 'All contractors', value: 'ALL' }, ...contractorOpts]} />
             )}
+            <DateRangeFilter preset={dPreset} from={dFrom} to={dTo} onPreset={setDPreset} onFrom={setDFrom} onTo={setDTo} />
           </div>
           {(dist?.curve.length ?? 0) === 0 ? (
             <p className="text-muted" style={{ fontSize: 14, margin: 0 }}>Need at least two results to draw the curve.</p>
@@ -310,6 +320,7 @@ export const Analytics: React.FC = () => {
                 <Tooltip formatter={(v) => Number(v).toFixed(4)} labelFormatter={(x) => `${x} MPa`} />
                 <Area type="monotone" dataKey="y" stroke="var(--blue)" fill="var(--blue)" fillOpacity={0.12} strokeWidth={2} />
                 {dist?.fck != null && <ReferenceLine x={dist.fck} stroke="var(--red)" strokeDasharray="4 4" label={{ value: `fck ${dist.fck}`, fontSize: 11, fill: 'var(--red)' }} />}
+                {dist?.target_mean != null && <ReferenceLine x={dist.target_mean} stroke="var(--blue)" strokeDasharray="4 4" label={{ value: `target ${dist.target_mean}`, fontSize: 11, fill: 'var(--blue)' }} />}
                 {dist?.mean != null && <ReferenceLine x={dist.mean} stroke="var(--green)" strokeDasharray="4 4" label={{ value: 'X̄', fontSize: 11, fill: 'var(--green)' }} />}
               </ComposedChart>
             </ResponsiveContainer>

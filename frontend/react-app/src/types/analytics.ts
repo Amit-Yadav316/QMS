@@ -117,6 +117,7 @@ export interface DistributionCurve {
   mean: number | null;
   std_dev: number | null;
   fck: number | null;
+  target_mean: number | null; // RMC design target, else IS-10262 fck+1.65σ
   curve: CurvePoint[];
   histogram: StrengthBucket[];
 }
