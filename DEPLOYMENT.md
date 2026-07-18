@@ -135,3 +135,12 @@ UV_LINK_MODE=copy DATABASE_URL='postgresql://…neon…/neondb?sslmode=require' 
   persistence matters.
 - **Always-on backend** — Render free sleeps. Koyeb's free instance stays warm if
   cold starts are a problem (swap the backend host; nothing else changes).
+- **Content-Security-Policy** — `vercel.json` sets `X-Content-Type-Options`,
+  `X-Frame-Options`, `Referrer-Policy` and `Permissions-Policy`, but no CSP. A
+  useful CSP has to name the backend origin in `connect-src`, and that origin is
+  a per-deploy build var (`VITE_API_BASE_URL`), so it can't be hardcoded here
+  without breaking a differently-hosted backend. Worth adding once the backend
+  host is stable — the refresh token lives in `localStorage` for 7 days, so a CSP
+  is the main thing blunting a future XSS.
+- **Rate limiting** — `/auth/login` has no attempt cap or lockout (the OTP paths
+  do). Needs middleware; see TASKS.md.

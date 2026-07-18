@@ -20,6 +20,45 @@ cleanup debt and deliberately-deferred work. Keep it current as you go.
       Extract reusable pieces into `src/components/` (which is currently nearly
       empty).
 
+## Security — open findings (from the 2026-07-18 whole-codebase audit)
+
+Fixed in that pass: cross-tenant user enumeration via corrective-action
+`assigned_to`; unscoped retest `lab_id`/`report_document_id`; logout not revoking
+the refresh token; offboarded users still able to refresh; the fail-open wipe
+guard; unbounded pre-auth request bodies; credentials in production logs; the
+in-situ slump gate bypass; the RAG embedding cache-key mismatch. Still open:
+
+- [ ] **Supplier/lab confirmation tokens never expire or get invalidated.**
+      `Supplier.confirmation_token` / `TestingLab.confirmation_token` have no
+      `expires_at` (unlike `TruckDispatch`, which does it correctly), are not
+      cleared after use, and survive a DECLINE. The endpoint can also rewrite
+      `contact_email` — the sink for every later dispatch / report / mix link.
+      Needs a migration + null-on-use.
+- [ ] **Blocking a supplier/lab doesn't revoke its tokens.** A blocked RMC keeps
+      submitting mix designs; a blocked lab keeps writing cube results. Re-check
+      `is_blocked` inside the token lookups and null the tokens on block.
+- [ ] **No rate limiting on `/auth/login`.** OTP attempts are capped and resend
+      is throttled, but password login has no attempt counter or lockout. See
+      also the IP-based item below.
+- [ ] **Register returns 409 "Email already exists"** — an unauthenticated
+      account-existence oracle. `resend_otp` already avoids this; mirror it.
+      `login` also short-circuits before `verify_password`, giving a timing
+      signal.
+- [ ] **Model/migration drift.** `auth.email_otps.created_at` and
+      `auth.project_members.assigned_at` are NOT NULL on the models but nullable
+      in the migrations; 4 unique indexes differ in name (`*_key` vs `uq_*`),
+      which makes `--autogenerate` propose spurious drops. Needs one migration.
+- [ ] **Strength histogram buckets are hardcoded to start at 35 MPa**
+      (`analytics_service._BUCKET_ORDER`), so an M25/M30 project collapses to a
+      single `<35` bar. A test currently asserts the broken behaviour.
+- [ ] **`qe_inbox` is an unbounded N+1** — loads every dispatch on the project,
+      runs ~5 queries each, then discards all but `PENDING_QE`.
+- [ ] **Frontend:** the RMC notice in `NCRDetailPanel` re-seeds from `ncr` on
+      every detail refetch, so edited text silently reverts mid-edit and the
+      wrong body can be emailed; a 403 deactivation never forces logout; a retried
+      401 leaves the session stuck; `ProjectDispatches` copy-link has no
+      try/catch; AI-suggestion auto-generate re-fires on every expand.
+
 ## Deferred (needs infra, a decision, or an external dependency)
 
 - [ ] **Automated lab-report reminders (7/14/28-day).** The lab cube-report flow
@@ -47,10 +86,10 @@ cleanup debt and deliberately-deferred work. Keep it current as you go.
       pours. (The mix-design now carries the full detailed form + a mandatory PDF
       attachment per record; auto-fill from that PDF is the remaining vision.)
 
-- [ ] **UI component library decision (Radix vs Tailwind+shadcn).** Scoped plan in
-      `frontend/react-app/UI_LIBRARY_PLAN.md`. Path A (incremental Radix primitives +
-      polish) is recommended first and low-risk; Path B (full Tailwind+shadcn) is the
-      visual overhaul and needs explicit approval.
+- [ ] **UI component library — Path B (Tailwind + shadcn/ui).** Path A (Radix
+      primitives + polish) is **done**; the remaining plan is in
+      `frontend/react-app/UI_LIBRARY_PLAN.md`. Path B is the full visual overhaul
+      and needs explicit approval — it touches every page.
 
 ## Recently done (for context)
 
